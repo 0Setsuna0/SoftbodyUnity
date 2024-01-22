@@ -1,3 +1,4 @@
 Base path: 'C:/WorldXWorkspace/p4/unity_2022/WindowsEditor/x64/Release/Data', plugins path 'C:/WorldXWorkspace/p4/unity_2022/WindowsEditor/x64/Release/Data/PlaybackEngines'
 Cmd: initializeCompiler
 
+Cmd: shutdown
