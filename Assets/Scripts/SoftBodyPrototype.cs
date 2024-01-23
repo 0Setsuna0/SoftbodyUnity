@@ -63,7 +63,7 @@ public class SoftBodyPrototype : MonoBehaviour
     [Tooltip("Max. seconds between land and jump")]
     public float JumpWaitMax = 4.0f;
 
-    [Header("�ն�ϵ��")]
+    [Header("�ն�ϵ��")]
     public int w;
 
     private float JumpWait;
@@ -73,6 +73,7 @@ public class SoftBodyPrototype : MonoBehaviour
     #region point mass and hull face private state
     private Vector3[] PointMassAccelerations;
     private Vector3[] PointMassVelocities;
+    [SerializeField]
     private Vector3[] PointMassPositions;
 
     private Vector3[] FaceNormals;
@@ -95,13 +96,47 @@ public class SoftBodyPrototype : MonoBehaviour
     // TODO write an ECS/Job System version and see how the perf. is for naive custom collision testing
     private BoxCollider TriggerCollider;
 
+    public MeshFilter childMeshFilter;
+    public Mesh childMesh;
+    public Bounds childMeshBounds;
+
+    public Vector3 MappingCoef;
+    private Transform fatherTransform;
+    [SerializeField]
+    private Transform childTransform;
+    [SerializeField]
+    private Vector3 initialOffset;
     private void Awake()
     {
+        fatherTransform = GetComponent<Transform>();
+        childTransform = fatherTransform.GetChild(0);
+        
         TriggerCollider = GetComponent<BoxCollider>();
+        childMeshFilter = GetComponentInChildren<MeshFilter>();
+        
+        childMesh = childMeshFilter.mesh;
+        childMeshBounds = childMesh.bounds;
+        
+        // 获取子物体的局部包围盒中心
+        Vector3 localBoundsCenter = childMeshBounds.center;
 
+        // 将局部包围盒中心转换为世界坐标
+        Vector3 worldBoundsCenter = childTransform.TransformPoint(localBoundsCenter);
+
+        // 使用子物体网格的包围盒的世界中心来设置父物体的 BoxCollider 中心
+        TriggerCollider.center = fatherTransform.InverseTransformPoint(worldBoundsCenter);
+
+        // 考虑子物体的缩放，使用子物体网格的包围盒的大小和子物体的缩放来设置父物体的 BoxCollider 大小
+        Vector3 scaledBoundsSize = new Vector3(
+            childMeshBounds.size.x * childTransform.localScale.x,
+            childMeshBounds.size.y * childTransform.localScale.y,
+            childMeshBounds.size.z * childTransform.localScale.z
+        );
+
+        TriggerCollider.size = scaledBoundsSize;
+        
         // this soft body simulation uses a bounding box shaped (for simplicity) mass spring lattice 
         // to enclose the mesh to be deformed
-        // ʹ�ð�Χ�н���deform
         PointMassAccelerations = new Vector3[8];
         PointMassVelocities = new Vector3[8];
         PointMassPositions = new Vector3[8];
@@ -114,9 +149,15 @@ public class SoftBodyPrototype : MonoBehaviour
         FaceNormals = new Vector3[numFaces];
         FaceAreas = new float[numFaces];
 
-        HullRestVolume = transform.localScale.x * transform.localScale.y * transform.localScale.z;
+        MappingCoef = new Vector3(TriggerCollider.size.x / transform.localScale.x,
+            TriggerCollider.size.y / transform.localScale.y, TriggerCollider.size.z / transform.localScale.z);
+        
+        HullRestVolume = TriggerCollider.size.x * TriggerCollider.size.y * TriggerCollider.size.z;
+        
         TransformStartPosition = transform.position;
         TransformStartScale = transform.localScale;
+
+        initialOffset = transform.position - worldBoundsCenter;
         if (PlayAreaTriggerLayer == INVALID_LAYER)
         {
             // static, just initialize once
@@ -126,15 +167,29 @@ public class SoftBodyPrototype : MonoBehaviour
 
     private void InitializePointMassPositionsToBoundingBox()
     {
-        PointMassPositions[0] = transform.TransformPoint(new Vector3(.5f, .5f, .5f));
-        PointMassPositions[1] = transform.TransformPoint(new Vector3(.5f, .5f, -.5f));
-        PointMassPositions[2] = transform.TransformPoint(new Vector3(-.5f, .5f, -.5f));
-        PointMassPositions[3] = transform.TransformPoint(new Vector3(-.5f, .5f, .5f));
+        // 使用子物体网格的包围盒
+        Bounds childMeshBounds = childMesh.bounds;
 
-        PointMassPositions[4] = transform.TransformPoint(new Vector3(.5f, -.5f, .5f));
-        PointMassPositions[5] = transform.TransformPoint(new Vector3(.5f, -.5f, -.5f));
-        PointMassPositions[6] = transform.TransformPoint(new Vector3(-.5f, -.5f, -.5f));
-        PointMassPositions[7] = transform.TransformPoint(new Vector3(-.5f, -.5f, .5f));
+        // 获取子物体网格的包围盒的8个角的位置
+        Vector3[] corners = new Vector3[8];
+        corners[0] = childMeshBounds.center + new Vector3(childMeshBounds.size.x, childMeshBounds.size.y, childMeshBounds.size.z) / 2;
+        corners[1] = childMeshBounds.center + new Vector3(childMeshBounds.size.x, childMeshBounds.size.y, -childMeshBounds.size.z) / 2;
+        corners[2] = childMeshBounds.center + new Vector3(-childMeshBounds.size.x, childMeshBounds.size.y, -childMeshBounds.size.z) / 2;
+        corners[3] = childMeshBounds.center + new Vector3(-childMeshBounds.size.x, childMeshBounds.size.y, childMeshBounds.size.z) / 2;
+        corners[4] = childMeshBounds.center + new Vector3(childMeshBounds.size.x, -childMeshBounds.size.y, childMeshBounds.size.z) / 2;
+        corners[5] = childMeshBounds.center + new Vector3(childMeshBounds.size.x, -childMeshBounds.size.y, -childMeshBounds.size.z) / 2;
+        corners[6] = childMeshBounds.center + new Vector3(-childMeshBounds.size.x, -childMeshBounds.size.y, -childMeshBounds.size.z) / 2;
+        corners[7] = childMeshBounds.center + new Vector3(-childMeshBounds.size.x, -childMeshBounds.size.y, childMeshBounds.size.z) / 2;
+
+        // 转换角的位置到世界坐标系
+        for (int i = 0; i < 8; i++)
+        {
+            corners[i] = childTransform.TransformPoint(corners[i]);
+        }
+
+        // 设置点的位置
+        PointMassPositions = corners;
+        
     }
 
     private void InitializePointMassIndexesForBoundingBox()
@@ -459,17 +514,19 @@ public class SoftBodyPrototype : MonoBehaviour
         Bounds ptBounds = new Bounds();
         for (int i = 0; i < PointMassPositions.Length; ++i)
         {
+            
             PointMassVelocities[i] += PointMassAccelerations[i] * deltaTime + jumpVelocity;
             PointMassPositions[i] += PointMassVelocities[i] * deltaTime;
             if (i == 0)
             {
-                // start the bounds around the first point mass position (instead of [0,0,0])
-                ptBounds = new Bounds(PointMassPositions[i], new Vector3(0.0f, 0.0f, 0.0f));
+                ptBounds = new Bounds(PointMassPositions[i], new Vector3(0, 0, 0));
             }
             else
             {
                 ptBounds.Encapsulate(PointMassPositions[i]);
             }
+
+
         }
 
         // The position and scale are set to fit the TriggerCollider (BoxCollider) to be
@@ -485,9 +542,21 @@ public class SoftBodyPrototype : MonoBehaviour
         }
         else
         {
-            transform.position = ptBounds.center;
-            transform.localScale = ptBounds.size;
+
+            transform.localScale = new Vector3(ptBounds.size.x / MappingCoef.x, ptBounds.size.y / MappingCoef.y, ptBounds.size.z/MappingCoef.z);
+            transform.position = ptBounds.center + new Vector3(initialOffset.x * transform.localScale.x,
+                initialOffset.y * transform.localScale.y, initialOffset.z * transform.localScale.z);
         }
+    }
+
+    private void MapVectorMul(Vector3 vec3, Vector3 mappingCoef)
+    {
+        vec3 = new Vector3(vec3.x * mappingCoef.x, vec3.y * mappingCoef.y, vec3.z * mappingCoef.z);
+    }
+
+    private void MapVectorDiv(Vector3 vec3, Vector3 mappingCoef)
+    {
+        vec3 = new Vector3(vec3.x / mappingCoef.x, vec3.y / mappingCoef.y, vec3.z / mappingCoef.z);
     }
     // Returns the cross product: (a - b) X (c - b)
     static Vector3 CalcCross(Vector3 a, Vector3 b, Vector3 c)
