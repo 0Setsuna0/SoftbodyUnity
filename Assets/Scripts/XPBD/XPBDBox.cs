@@ -5,26 +5,30 @@ using UnityEngine;
 
 public class XPBDBox : MonoBehaviour
 {
-    public float stiffnessInverse = 0;
+    public float stiffness = 1;
+    [SerializeField] private float stiffnessInverse = 1;
     public float constrainDamping;
 
     public int XPBDIterationNums = 5;
 
     private float SubDt;
     //mass points
-    private Vector3[] PointsPosition;
+    public Vector3[] PointsPosition;
     private Vector3[] PrevPointsPosition;
     private Vector3[] PointsVelocity;
     private Vector3[] PointsAcceleration;
     private float[] PointsMass;
+
+    private float[] PointsInvMass;
     //for volume conservation
     private Vector3[] FaceNoramls;
     private float[] FaceAreas;
 
     private int[,] FaceConnectionPointIndex;
     private int[,] DiagonalConnectionPointIndex;
-    private float[] FaceConstrainRestLength;
-    private float[] DiagionalConstrainRestLength;
+    public float[] FaceConstrainRestLength;
+    public float[] DiagionalConstrainRestLength;
+    [SerializeField] private float[] RestTetVolume;
 
     private float RestVolume;
 
@@ -40,6 +44,9 @@ public class XPBDBox : MonoBehaviour
     //mapping
     private Vector3 MappingCoef;
     private Vector3 InitialOffset;
+    
+    //debug
+    public float FloorHeight;
     
     void Start()
     {
@@ -62,17 +69,23 @@ public class XPBDBox : MonoBehaviour
             ChildMeshBounds.size.z * ChildTransform.localScale.z
         );
         MCollider.size = scaledBoundsSize;
+
+        stiffnessInverse = 1 / stiffness;
         SubDt = Time.deltaTime / XPBDIterationNums;
 
         PointsPosition = new Vector3[8];
+        PrevPointsPosition = new Vector3[8];
         PointsVelocity = new Vector3[8];
         PointsAcceleration = new Vector3[8];
         PointsMass = new float[8];
+        PointsInvMass = new float[8];
+        RestTetVolume = new float[12];
         
         //init connection index
         InitPointsPositions();
         InitPointConnectionIndex();
         CalculateRestLength();
+        InitPhysics();
         
         int numsFaces = FaceConnectionPointIndex.GetLength(0);
         FaceNoramls = new Vector3[numsFaces];
@@ -96,18 +109,34 @@ public class XPBDBox : MonoBehaviour
     {
         for (int i = 0; i < XPBDIterationNums; i++)
         {
-            // PredictVelocity(SubDt);
-            //
-            // SolveDistanceConstrian(SubDt);
-            //
-            // SolveBendingConstrian(SubDt);
-            //
-            // SolveVolumeConstrain(SubDt);
-            //
-            // CalculateVelocity(SubDt);
+            PredictVelocity(SubDt);
+            
+            SolveDistanceConstrian(SubDt);
+            
+            SolveBendingConstrian(SubDt);
+            
+            SolveVolumeConstrain(SubDt);
+            
+            CalculateVelocity(SubDt);
+        }
+
+        for (int i = 0; i < 8; i++)
+        {
+            PointsVelocity[i] *= 0.9f;
         }
     }
 
+    private void InitPhysics()
+    {
+        //init particle mass
+        for (int i = 0; i < PointsInvMass.Length; i++)
+        {
+            PointsMass[i] = 1.0f;
+            PointsInvMass[i] = 1 / PointsMass[i];
+            PointsAcceleration[i] = Physics.gravity;
+        }
+    }
+    
     private void InitPointsPositions()
     {
         Bounds childMeshBounds = ChildMeshBounds;
@@ -137,7 +166,7 @@ public class XPBDBox : MonoBehaviour
         FaceConnectionPointIndex =
             new int[6, 4]
             { {3, 2, 1, 0}, {1, 5, 4, 0}, {2, 6, 5, 1}, {3, 7, 6, 2},
-                {0, 4, 7, 3}, {4, 5, 6, 7} }; 
+                {0, 4, 7, 3}, {4, 5, 6, 7} };
         
         DiagonalConnectionPointIndex =
             new int[16, 2]
@@ -157,7 +186,6 @@ public class XPBDBox : MonoBehaviour
     
     private void CalculateRestLength()
     {
-        int connectionIndex = 0;
         int numFaceEdgeConnections = FaceConnectionPointIndex.GetLength(0) * FaceConnectionPointIndex.GetLength(1);
         FaceConstrainRestLength = new float[numFaceEdgeConnections];
 
@@ -170,13 +198,13 @@ public class XPBDBox : MonoBehaviour
         
         for (int i = 0; i < numFaces; i++)
         {
-            for (int j = 0; j < numFaces; j++)
+            for (int j = 0; j < numPointsPerFace; j++)
             {
                 int pt0Index = FaceConnectionPointIndex[i, j];
                 int pt1Index = FaceConnectionPointIndex[i, (j + 1) % numPointsPerFace];
                 FaceConstrainRestLength[faceConstrainIndex] =
                     (PointsPosition[pt0Index] - PointsPosition[pt1Index]).magnitude;
-                faceConstrainIndex++;
+                ++faceConstrainIndex;
             }
         }
         
@@ -194,16 +222,86 @@ public class XPBDBox : MonoBehaviour
         for (int i = 0; i < 8; i++)
         {
             PointsVelocity[i] += dtS * PointsAcceleration[i];
-            PointsVelocity.CopyTo(PrevPointsPosition, 0);
-            PointsPosition[i] = PointsPosition[i] + dtS * PointsVelocity[i];
+            PrevPointsPosition[i] = PointsPosition[i];
+            PointsPosition[i] += dtS * PointsVelocity[i];
+            if (PointsPosition[i].y < FloorHeight)
+            {
+                PointsPosition[i] = PrevPointsPosition[i];
+                PointsPosition[i].y = FloorHeight;
+                PointsVelocity[i].y = 0.0f;
+            }
+            
         }
     }
 
     private void SolveDistanceConstrian(float dtS)
     {
-        
-    }
+        var alpha = stiffnessInverse / (dtS * dtS);
+        int numFaces = FaceConnectionPointIndex.GetLength(0);
+        int numPtsPerFace = FaceConnectionPointIndex.GetLength(1);
+        int faceConstrainIndex = 0;
+        for (int i = 0; i < numFaces; i++)
+        {
+            for (int j = 0; j < numPtsPerFace; j++)
+            {
+                int pt0Index = FaceConnectionPointIndex[i, j];
+                int pt1Index = FaceConnectionPointIndex[i, (j + 1) % numPtsPerFace];
+                //get particle weight
+                float w0 = PointsInvMass[pt0Index];
+                float w1 = PointsInvMass[pt1Index];
+                float w = w0 + w1;
+                if (w == 0.0f)
+                {
+                    continue;
+                }
+                //calculate current distance
+                Vector3 n = PointsPosition[pt0Index] - PointsPosition[pt1Index];
+                float d = n.magnitude;
+                if (d == 0.0f)
+                {
+                    continue;
+                }
+                //calculate diff direction
+                n /= d;
+                //constrain
+                float C = d - FaceConstrainRestLength[faceConstrainIndex];
+                ++faceConstrainIndex;
+                float s = -C / (w + alpha);
+                PointsPosition[pt0Index] += s * w0 * n;
+                PointsPosition[pt1Index] -= s * w0 * n;
+            }
+        }
 
+        int numDiagonalConnections = DiagonalConnectionPointIndex.GetLength(0);
+        for (int i = 0; i < numDiagonalConnections; i++)
+        {
+            int pt0Index = DiagonalConnectionPointIndex[i, 0];
+            int pt1Index = DiagonalConnectionPointIndex[i, 1];
+            //get particle weight
+            float w0 = PointsInvMass[pt0Index];
+            float w1 = PointsInvMass[pt1Index];
+            float w = w0 + w1;
+            if (w == 0.0f)
+            {
+                continue;
+            }
+            //calculate current distance
+            Vector3 n = PointsPosition[pt0Index] - PointsPosition[pt1Index];
+            float d = n.magnitude;
+            if (d == 0.0f)
+            {
+                continue;
+            }
+            //calculate diff direction
+            n /= d;
+            //constrain
+            float C = d - DiagionalConstrainRestLength[i];
+            float s = -C / (w + alpha);
+            PointsPosition[pt0Index] += s * w0 * n;
+            PointsPosition[pt1Index] -= s * w0 * n;
+        }
+    }
+    
     private void SolveBendingConstrian(float dtS)
     {
         
@@ -216,6 +314,10 @@ public class XPBDBox : MonoBehaviour
 
     private void CalculateVelocity(float dtS)
     {
+        for (int i = 0; i < PointsPosition.Length; i++)
+        {
+            PointsVelocity[i] = (PointsPosition[i] - PrevPointsPosition[i]) / dtS;
+        }
         
     }
 
