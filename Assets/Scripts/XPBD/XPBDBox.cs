@@ -241,6 +241,7 @@ public class XPBDBox : MonoBehaviour
             {
                 PointsPosition[i] = PrevPointsPosition[i];
                 PointsPosition[i].y = FloorHeight;
+                PointsVelocity[i].y *= -0.01f;
             }
             
         }
@@ -249,6 +250,35 @@ public class XPBDBox : MonoBehaviour
     private void SolveDistanceConstrian(float dtS)
     {
         var alpha = stiffnessInverse / (dtS * dtS);
+        int numDiagonalConnections = DiagonalEdge.GetLength(0);
+        for (int i = 0; i < numDiagonalConnections; i++)
+        {
+            int pt0Index = DiagonalEdge[i, 0];
+            int pt1Index = DiagonalEdge[i, 1];
+            //get particle weight
+            float w0 = PointsInvMass[pt0Index];
+            float w1 = PointsInvMass[pt1Index];
+            float w = w0 + w1;
+            if (w == 0.0f)
+            {
+                continue;
+            }
+            //calculate current distance
+            Vector3 n = PointsPosition[pt0Index] - PointsPosition[pt1Index];
+            float d = n.magnitude;
+            if (d == 0.0f)
+            {
+                continue;
+            }
+            //calculate diff direction
+            n /= d;
+            //constrain
+            float C = d - DiagionalConstrainRestLength[i];
+            float s = -C / (w + alpha);
+            PBDCorrection[pt0Index] += s * w0 * n;
+            PBDCorrection[pt1Index] -= s * w0 * n;
+        }
+        
         int numFaces = FaceConnectionPointIndex.GetLength(0);
         int numPtsPerFace = FaceConnectionPointIndex.GetLength(1);
         int faceConstrainIndex = 0;
@@ -286,40 +316,8 @@ public class XPBDBox : MonoBehaviour
                 
             }
         }
-        return;
-        int numDiagonalConnections = DiagonalEdge.GetLength(0);
-        for (int i = 0; i < numDiagonalConnections; i++)
-        {
-            int pt0Index = DiagonalEdge[i, 0];
-            int pt1Index = DiagonalEdge[i, 1];
-            //get particle weight
-            float w0 = PointsInvMass[pt0Index];
-            float w1 = PointsInvMass[pt1Index];
-            float w = w0 + w1;
-            if (w == 0.0f)
-            {
-                continue;
-            }
-            //calculate current distance
-            Vector3 n = PointsPosition[pt0Index] - PointsPosition[pt1Index];
-            float d = n.magnitude;
-            if (d == 0.0f)
-            {
-                continue;
-            }
-            //calculate diff direction
-            n /= d;
-            //constrain
-            float C = d - DiagionalConstrainRestLength[i];
-            float s = -C / (w + alpha);
-            PBDCorrection[pt0Index] += s * w0 * n;
-            PBDCorrection[pt1Index] -= s * w0 * n;
-            
-            // C = d - DiagionalConstrainRestLength[i];
-            // s = -C / (w + alpha);
-            // PointsPosition[pt1Index] += s * w0 * n;
-            // PointsPosition[pt0Index] -= s * w0 * n;
-        }
+        
+        
     }
 
     private void UpdatePos()
@@ -348,6 +346,7 @@ public class XPBDBox : MonoBehaviour
     }
     private void CalculateFaceNormals()
     {
+        
         int numFaces = FaceConnectionPointIndex.GetLength(0);
 
         for (int i = 0; i < numFaces; i++)

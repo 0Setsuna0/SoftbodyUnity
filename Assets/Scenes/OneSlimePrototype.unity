@@ -866,10 +866,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e2135f80db8ffea48be624053fc30531, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  stiffness: 10000
+  stiffness: 10
   stiffnessInverse: 0
   constrainDamping: 0
-  XPBDIterationNums: 40
+  XPBDIterationNums: 5
   PointsPosition: []
   PBDCorrection: []
   FaceNoramls: []

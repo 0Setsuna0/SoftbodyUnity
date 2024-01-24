@@ -1,0 +1,10 @@
+^D:\GRAPHIC\TETGEN1.6.0\CMAKELISTS.TXT
+setlocal
+D:\Graphic\OpenGL\Cmake\bin\cmake.exe -SD:/Graphic/tetgen1.6.0 -BD:/Graphic/tetgen1.6.0/B --check-stamp-file D:/Graphic/tetgen1.6.0/B/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

@@ -1,0 +1,4 @@
+D:/Graphic/tetgen1.6.0/B/CMakeFiles/tetgen.dir
+D:/Graphic/tetgen1.6.0/B/CMakeFiles/tet.dir
+D:/Graphic/tetgen1.6.0/B/CMakeFiles/ALL_BUILD.dir
+D:/Graphic/tetgen1.6.0/B/CMakeFiles/ZERO_CHECK.dir
