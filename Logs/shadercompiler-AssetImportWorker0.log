@@ -1,4 +1,4 @@
-Base path: 'C:/WorldXWorkspace/p4/unity_2022/WindowsEditor/x64/Release/Data', plugins path 'C:/WorldXWorkspace/p4/unity_2022/WindowsEditor/x64/Release/Data/PlaybackEngines'
+Base path: 'D:/unity/2021.3.4f1c1/Editor/Data', plugins path 'D:/unity/2021.3.4f1c1/Editor/Data/PlaybackEngines'
 Cmd: initializeCompiler
 
 Unhandled exception: Protocol error - failed to read magic number (error -2147483644, transferred 0/4)

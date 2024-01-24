@@ -15,6 +15,7 @@ public class XPBDBox : MonoBehaviour
     //mass points
     public Vector3[] PointsPosition;
     private Vector3[] PrevPointsPosition;
+    public Vector3[] PBDCorrection;
     private Vector3[] PointsVelocity;
     private Vector3[] PointsAcceleration;
     private float[] PointsMass;
@@ -76,6 +77,7 @@ public class XPBDBox : MonoBehaviour
 
         PointsPosition = new Vector3[8];
         PrevPointsPosition = new Vector3[8];
+        PBDCorrection = new Vector3[8];
         PointsVelocity = new Vector3[8];
         PointsAcceleration = new Vector3[8];
         PointsMass = new float[8];
@@ -119,6 +121,8 @@ public class XPBDBox : MonoBehaviour
             SolveBendingConstrian(SubDt);
             
             SolveVolumeConstrain(SubDt);
+            
+            UpdatePos();
             
             CalculateVelocity(SubDt);
         }
@@ -275,8 +279,8 @@ public class XPBDBox : MonoBehaviour
                 float C = d - FaceConstrainRestLength[faceConstrainIndex];
      
                 float s = -C / (w + alpha);
-                PointsPosition[pt0Index] += s * w0 * n;
-                PointsPosition[pt1Index] -= s * w0 * n;
+                PBDCorrection[pt0Index] += s * w0 * n;
+                PBDCorrection[pt1Index] -= s * w0 * n;
                 
                 ++faceConstrainIndex;
                 
@@ -308,8 +312,8 @@ public class XPBDBox : MonoBehaviour
             //constrain
             float C = d - DiagionalConstrainRestLength[i];
             float s = -C / (w + alpha);
-            PointsPosition[pt0Index] += s * w0 * n;
-            PointsPosition[pt1Index] -= s * w0 * n;
+            PBDCorrection[pt0Index] += s * w0 * n;
+            PBDCorrection[pt1Index] -= s * w0 * n;
             
             // C = d - DiagionalConstrainRestLength[i];
             // s = -C / (w + alpha);
@@ -317,7 +321,15 @@ public class XPBDBox : MonoBehaviour
             // PointsPosition[pt0Index] -= s * w0 * n;
         }
     }
-    
+
+    private void UpdatePos()
+    {
+        for (int i = 0; i < PointsPosition.Length; i++)
+        {
+            PointsPosition[i] += PBDCorrection[i];
+            PBDCorrection[i] = new Vector3(0, 0, 0);
+        }
+    }
     private void SolveBendingConstrian(float dtS)
     {
         
