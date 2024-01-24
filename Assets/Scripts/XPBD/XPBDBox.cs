@@ -21,11 +21,12 @@ public class XPBDBox : MonoBehaviour
 
     private float[] PointsInvMass;
     //for volume conservation
-    private Vector3[] FaceNoramls;
+    public Vector3[] FaceNoramls;
     private float[] FaceAreas;
 
     private int[,] FaceConnectionPointIndex;
-    private int[,] DiagonalConnectionPointIndex;
+    private int[,] FaceEdge;
+    private int[,] DiagonalEdge;
     public float[] FaceConstrainRestLength;
     public float[] DiagionalConstrainRestLength;
     [SerializeField] private float[] RestTetVolume;
@@ -80,12 +81,14 @@ public class XPBDBox : MonoBehaviour
         PointsMass = new float[8];
         PointsInvMass = new float[8];
         RestTetVolume = new float[12];
+        FaceNoramls = new Vector3[6];
         
         //init connection index
         InitPointsPositions();
         InitPointConnectionIndex();
         CalculateRestLength();
         InitPhysics();
+        InitBendingConstrain();
         
         int numsFaces = FaceConnectionPointIndex.GetLength(0);
         FaceNoramls = new Vector3[numsFaces];
@@ -122,7 +125,7 @@ public class XPBDBox : MonoBehaviour
 
         for (int i = 0; i < 8; i++)
         {
-            PointsVelocity[i] *= 0.9f;
+            PointsVelocity[i] *= 0.95f;
         }
     }
 
@@ -160,27 +163,33 @@ public class XPBDBox : MonoBehaviour
 
         PointsPosition = corners;
     }
-
+    
     private void InitPointConnectionIndex()
     {
         FaceConnectionPointIndex =
             new int[6, 4]
             { {3, 2, 1, 0}, {1, 5, 4, 0}, {2, 6, 5, 1}, {3, 7, 6, 2},
                 {0, 4, 7, 3}, {4, 5, 6, 7} };
-        
-        DiagonalConnectionPointIndex =
-            new int[16, 2]
+
+        DiagonalEdge =
+            new int[32, 2]
             {
                 // crossing inside hull
-                {0, 6}, {1, 7}, {2, 4}, {3, 5}, 
+                { 0, 6 }, { 6, 0 }, { 1, 7 }, { 7, 1 }, { 2, 4 }, { 4, 2 }, { 3, 5 }, { 5, 3 },
 
                 // diagonals on hull
-                {3, 1}, {2, 0},
-                {0, 5}, {4, 1},
-                {1, 6}, {5, 2},
-                {2, 7}, {6, 3},
-                {3, 4}, {7, 0},
-                {4, 6}, {5, 7},
+                { 3, 1 }, { 1, 3 },
+                { 2, 0 }, { 0, 2 },
+                { 0, 5 }, { 5, 0 },
+                { 4, 1 }, { 1, 4 },
+                { 1, 6 }, { 6, 1 },
+                { 5, 2 }, { 2, 5 },
+                { 2, 7 }, { 7, 2 },
+                { 6, 3 }, { 3, 6 },
+                { 3, 4 }, { 4, 3 },
+                { 7, 0 }, { 0, 7 },
+                { 4, 6 }, { 6, 4 },
+                { 5, 7 }, { 7, 5 }
             };
     }
     
@@ -189,7 +198,7 @@ public class XPBDBox : MonoBehaviour
         int numFaceEdgeConnections = FaceConnectionPointIndex.GetLength(0) * FaceConnectionPointIndex.GetLength(1);
         FaceConstrainRestLength = new float[numFaceEdgeConnections];
 
-        int numDiagonalEdgeConnections = DiagonalConnectionPointIndex.GetLength(0);
+        int numDiagonalEdgeConnections = DiagonalEdge.GetLength(0);
         DiagionalConstrainRestLength = new float[numDiagonalEdgeConnections];
         
         int numFaces = FaceConnectionPointIndex.GetLength(0);
@@ -210,8 +219,8 @@ public class XPBDBox : MonoBehaviour
         
         for (int i = 0; i < numDiagonalEdgeConnections; i++)
         {
-            int pt0Index = DiagonalConnectionPointIndex[i, 0];
-            int pt1Index = DiagonalConnectionPointIndex[i, 1];
+            int pt0Index = DiagonalEdge[i, 0];
+            int pt1Index = DiagonalEdge[i, 1];
             DiagionalConstrainRestLength[i] = (PointsPosition[pt0Index] - PointsPosition[pt1Index]).magnitude;
         }
 
@@ -228,7 +237,6 @@ public class XPBDBox : MonoBehaviour
             {
                 PointsPosition[i] = PrevPointsPosition[i];
                 PointsPosition[i].y = FloorHeight;
-                PointsVelocity[i].y = 0.0f;
             }
             
         }
@@ -265,18 +273,21 @@ public class XPBDBox : MonoBehaviour
                 n /= d;
                 //constrain
                 float C = d - FaceConstrainRestLength[faceConstrainIndex];
-                ++faceConstrainIndex;
+     
                 float s = -C / (w + alpha);
                 PointsPosition[pt0Index] += s * w0 * n;
                 PointsPosition[pt1Index] -= s * w0 * n;
+                
+                ++faceConstrainIndex;
+                
             }
         }
-
-        int numDiagonalConnections = DiagonalConnectionPointIndex.GetLength(0);
+        return;
+        int numDiagonalConnections = DiagonalEdge.GetLength(0);
         for (int i = 0; i < numDiagonalConnections; i++)
         {
-            int pt0Index = DiagonalConnectionPointIndex[i, 0];
-            int pt1Index = DiagonalConnectionPointIndex[i, 1];
+            int pt0Index = DiagonalEdge[i, 0];
+            int pt1Index = DiagonalEdge[i, 1];
             //get particle weight
             float w0 = PointsInvMass[pt0Index];
             float w1 = PointsInvMass[pt1Index];
@@ -299,6 +310,11 @@ public class XPBDBox : MonoBehaviour
             float s = -C / (w + alpha);
             PointsPosition[pt0Index] += s * w0 * n;
             PointsPosition[pt1Index] -= s * w0 * n;
+            
+            // C = d - DiagionalConstrainRestLength[i];
+            // s = -C / (w + alpha);
+            // PointsPosition[pt1Index] += s * w0 * n;
+            // PointsPosition[pt0Index] -= s * w0 * n;
         }
     }
     
@@ -309,9 +325,34 @@ public class XPBDBox : MonoBehaviour
     
     private void SolveVolumeConstrain(float dtS)
     {
-        
+        CalculateFaceNormals();
     }
 
+    
+    
+    private void InitBendingConstrain()
+    {
+        CalculateFaceNormals();
+    }
+    private void CalculateFaceNormals()
+    {
+        int numFaces = FaceConnectionPointIndex.GetLength(0);
+
+        for (int i = 0; i < numFaces; i++)
+        {
+            int pt0Index = FaceConnectionPointIndex[i, 0];
+            int pt1Index = FaceConnectionPointIndex[i, 1];
+            int pt2Index = FaceConnectionPointIndex[i, 2];
+
+            Vector3 edge1 = PointsPosition[pt1Index] - PointsPosition[pt0Index];
+            Vector3 edge2 = PointsPosition[pt2Index] - PointsPosition[pt0Index];
+
+            Vector3 normal = Vector3.Cross(edge1, edge2).normalized;
+
+            // Store the calculated normal
+            FaceNoramls[i] = normal;
+        }
+    }
     private void CalculateVelocity(float dtS)
     {
         for (int i = 0; i < PointsPosition.Length; i++)
@@ -391,10 +432,10 @@ public class XPBDBox : MonoBehaviour
 
         // draw the springs that cross inside the hull and hull faces
         Gizmos.color = Color.yellow;
-        for (int i = 0; i < DiagonalConnectionPointIndex.GetLength(0); ++i)
+        for (int i = 0; i < DiagonalEdge.GetLength(0); ++i)
         {
-            int pt0Index = DiagonalConnectionPointIndex[i, 0];
-            int pt1Index = DiagonalConnectionPointIndex[i, 1];
+            int pt0Index = DiagonalEdge[i, 0];
+            int pt1Index = DiagonalEdge[i, 1];
             Gizmos.DrawLine(PointsPosition[pt0Index], PointsPosition[pt1Index]);
         }
     }

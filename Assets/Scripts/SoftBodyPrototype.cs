@@ -344,7 +344,7 @@ public class SoftBodyPrototype : MonoBehaviour
         }
 
         AccumulateSpringForces();
-        AccumulatePressureForces();
+        //AccumulatePressureForces();
 
         // Jump every few seconds, to keep the simulation lively
         Vector3 jumpVelocity = new Vector3(0.0f, 0.0f, 0.0f);
