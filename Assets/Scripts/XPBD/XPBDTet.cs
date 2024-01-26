@@ -13,6 +13,7 @@ public class XPBDTet : MonoBehaviour
     private int[] TetIdx;
     private int[] EdgeIdx;
     public int[] SurfaceIdx;
+    public HashSet<int> surfacePoints;
     public int numParticles = 1000;
     public int numTets = 100;
     public int numEdges = 1000;
@@ -28,8 +29,8 @@ public class XPBDTet : MonoBehaviour
     private float invVolumeStiffness = 0;
 
     
-    public float edgeInsideConstraintCoef;
-    public float edgeSurfaceConstraintCoef;
+    public float edgeInsideConstraintCoef = 1;
+    public float edgeSurfaceConstraintCoef = 1;
     public float velDamping = 0.95f;
     
     //tet
@@ -177,7 +178,7 @@ public class XPBDTet : MonoBehaviour
     TetIdx = tetIdxList.ToArray();
     EdgeIdx = edgeIdxList.ToArray();
     SurfaceIdx = surfaceIdxList.ToArray();
-
+    surfacePoints = new HashSet<int>(SurfaceIdx);
     // Create Vector3 array from VFile
     Vertex = new Vector3[numParticles];
     for (int i = 0; i < numParticles; i++)
@@ -258,11 +259,12 @@ public class XPBDTet : MonoBehaviour
             int id0 = EdgeIdx[2 * i];
             int id1 = EdgeIdx[2 * i + 1];
 
+            float coef = edgeSurfaceConstraintCoef;
             float invMass0 = InvMass[id0];
             float invMass1 = InvMass[id1];
             Vector3 p0 = Pos[id0];
             Vector3 p1 = Pos[id1];
-            float restLength = RestEdgeLength[i];
+            float restLength = RestEdgeLength[i] * coef;
             
             float K = invMass0 + invMass1;
             if(K == 0.0f)
@@ -319,7 +321,9 @@ public class XPBDTet : MonoBehaviour
             if(K == 0.0f)
                 continue;
             float Kinv = 1 / K;
-            float C = volume - RestVolumes[i];
+            float C = volume - RestVolumes[i] * edgeSurfaceConstraintCoef * edgeSurfaceConstraintCoef *
+                edgeSurfaceConstraintCoef;
+            
             float lambda = -Kinv * C;
 
             if(id0 != 200)

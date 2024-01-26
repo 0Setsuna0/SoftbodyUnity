@@ -309,6 +309,77 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 50, y: -30, z: 0}
+--- !u!1 &1447655717
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1447655719}
+  - component: {fileID: 1447655718}
+  m_Layer: 0
+  m_Name: GameObject (1)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1447655718
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1447655717}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b65f03a49e1b36c48998efdde226305f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  SurfaceIdx: 
+  numParticles: 1000
+  numTets: 100
+  numEdges: 1000
+  invEdgeStiffness: 0
+  edgeInsideConstraintCoef: 1
+  edgeSurfaceConstraintCoef: 1
+  velDamping: 0.95
+  Temp:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  Grad:
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
+  InvMass: []
+  gravity: {x: 0, y: -9.8, z: 0}
+  floorHeight: 0
+  meshFilter: {fileID: 0}
+  meshRenderer: {fileID: 0}
+  RestVolumes: []
+  RestEdgeLength: []
+  mat: {fileID: 2100000, guid: b41ac48504d9cfe43849982f4f2dadfa, type: 2}
+  iterationNum: 10
+--- !u!4 &1447655719
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1447655717}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.80140245, y: 4.4234333, z: 0.47185725}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1668845659
 GameObject:
   m_ObjectHideFlags: 0
@@ -343,8 +414,8 @@ MonoBehaviour:
   numTets: 100
   numEdges: 1000
   invEdgeStiffness: 5
-  edgeInsideConstraintCoef: 0
-  edgeSurfaceConstraintCoef: 0
+  edgeInsideConstraintCoef: 1
+  edgeSurfaceConstraintCoef: 1
   velDamping: 0.95
   Temp:
   - {x: 0, y: 0, z: 0}
@@ -387,3 +458,4 @@ SceneRoots:
   - {fileID: 133720290}
   - {fileID: 601186950}
   - {fileID: 1668845661}
+  - {fileID: 1447655719}
