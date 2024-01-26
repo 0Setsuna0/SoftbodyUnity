@@ -209,7 +209,7 @@ Transform:
   m_GameObject: {fileID: 133720287}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1, z: -10}
+  m_LocalPosition: {x: -0.006, y: 1, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -342,11 +342,10 @@ MonoBehaviour:
   numParticles: 1000
   numTets: 100
   numEdges: 1000
-  edgeStiffness: 155.24
-  volumeStiffness: 100
+  invEdgeStiffness: 5
   edgeInsideConstraintCoef: 0
   edgeSurfaceConstraintCoef: 0
-  velDamping: 1
+  velDamping: 0.95
   Temp:
   - {x: 0, y: 0, z: 0}
   - {x: 0, y: 0, z: 0}
@@ -359,6 +358,7 @@ MonoBehaviour:
   - {x: 0, y: 0, z: 0}
   InvMass: []
   gravity: {x: 0, y: -9.8, z: 0}
+  floorHeight: -0.45
   meshFilter: {fileID: 0}
   meshRenderer: {fileID: 0}
   RestVolumes: []

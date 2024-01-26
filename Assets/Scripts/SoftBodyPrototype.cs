@@ -20,7 +20,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-
+using g3;
 // Simulates soft body physics using point masses connected by springs, and pressure on the faces
 // of the hull formed by the point masses, to simulate a contained fluid.
 //
@@ -71,7 +71,7 @@ public class SoftBodyPrototype : MonoBehaviour
     #endregion
 
     #region point mass and hull face private state
-    private Vector3[] PointMassAccelerations;
+    public Vector3[] PointMassAccelerations;
     private Vector3[] PointMassVelocities;
     [SerializeField]
     private Vector3[] PointMassPositions;
@@ -106,6 +106,8 @@ public class SoftBodyPrototype : MonoBehaviour
     private Transform childTransform;
     [SerializeField]
     private Vector3 initialOffset;
+
+    private ContOrientedBox3 obb;
     private void Awake()
     {
         fatherTransform = GetComponent<Transform>();
@@ -163,6 +165,7 @@ public class SoftBodyPrototype : MonoBehaviour
             // static, just initialize once
             PlayAreaTriggerLayer = LayerMask.NameToLayer("Play Area"); 
         }
+        
     }
 
     private void InitializePointMassPositionsToBoundingBox()
@@ -527,8 +530,7 @@ public class SoftBodyPrototype : MonoBehaviour
             }
 
 
-        }
-
+        } ;
         // The position and scale are set to fit the TriggerCollider (BoxCollider) to be
         // a conservative bounds for the point masses. Also, the child mesh will inherit this 
         // transform, and go squish, etc.
@@ -542,13 +544,40 @@ public class SoftBodyPrototype : MonoBehaviour
         }
         else
         {
+            Vector3 currentEdgeX = PointMassPositions[0] - PointMassPositions[3];
+            Vector3 currentEdgeY = PointMassPositions[0] - PointMassPositions[4];
+            Vector3 currentEdgeZ = PointMassPositions[0] - PointMassPositions[1];
 
-            transform.localScale = new Vector3(ptBounds.size.x / MappingCoef.x, ptBounds.size.y / MappingCoef.y, ptBounds.size.z/MappingCoef.z);
-            transform.position = ptBounds.center + new Vector3(initialOffset.x * transform.localScale.x,
-                initialOffset.y * transform.localScale.y, initialOffset.z * transform.localScale.z);
+            currentEdgeX /= currentEdgeX.magnitude;
+            currentEdgeY /= currentEdgeY.magnitude;
+            currentEdgeZ /= currentEdgeZ.magnitude;
+            
+            Vector3 standardEdgeX = new Vector3(1, 0, 0);
+            Vector3 standardEdgeY = new Vector3(0, 1, 0);
+            Vector3 standardEdgeZ = new Vector3(0, 0, 1);
+            
+            Quaternion rotX = Quaternion.FromToRotation(standardEdgeX, currentEdgeX);
+            Quaternion rotY = Quaternion.FromToRotation(standardEdgeY, currentEdgeY);
+            Quaternion rotZ = Quaternion.FromToRotation(standardEdgeZ, currentEdgeZ);
+
+            Quaternion totalRotation = rotX;
+            
+            transform.rotation = totalRotation;
+            
+            transform.localScale = new Vector3(
+                (PointMassPositions[0] - PointMassPositions[3]).magnitude / MappingCoef.x,
+                (PointMassPositions[0] - PointMassPositions[4]).magnitude / MappingCoef.y,
+                (PointMassPositions[0] - PointMassPositions[1]).magnitude / MappingCoef.z);
+            
+            Vector3 rotatedTempOffset = totalRotation * initialOffset;
+
+            Vector3 center = PointMassPositions[0] - currentEdgeX / 2 - currentEdgeY / 2 - currentEdgeZ / 2;
+            transform.position = ptBounds.center + new Vector3(rotatedTempOffset.x * transform.localScale.x,
+                rotatedTempOffset.y * transform.localScale.y, rotatedTempOffset.z * transform.localScale.z);
         }
     }
 
+    
     private void MapVectorMul(Vector3 vec3, Vector3 mappingCoef)
     {
         vec3 = new Vector3(vec3.x * mappingCoef.x, vec3.y * mappingCoef.y, vec3.z * mappingCoef.z);

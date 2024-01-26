@@ -24,8 +24,9 @@ public class XPBDTet : MonoBehaviour
     private Vector3[] Vel;
 
     //constraint
-    public float edgeStiffness;
-    public float volumeStiffness;
+    public float invEdgeStiffness;
+    private float invVolumeStiffness = 0;
+
     
     public float edgeInsideConstraintCoef;
     public float edgeSurfaceConstraintCoef;
@@ -38,6 +39,7 @@ public class XPBDTet : MonoBehaviour
     //physics
     public float[] InvMass;
     public Vector3 gravity;
+    public float floorHeight = 0.0f;
     
     //rendering
     public MeshFilter meshFilter;
@@ -89,12 +91,15 @@ public class XPBDTet : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
+
         float dt_s = Time.deltaTime / iterationNum;
         for (int i = 0; i < iterationNum; i++)
         {
             PredictPosition(dt_s);
             
-            SolveConstraint(dt_s);
+            Interaction();
+            
+            SolveConstraintXPBD(dt_s);
             
             CalculateVel(dt_s);
         }
@@ -103,6 +108,8 @@ public class XPBDTet : MonoBehaviour
         {
             Vel[i] *= velDamping;
         }
+        
+        
     }
 
     private void InitializeTetMesh(string filePath, ref int numParticles, ref int numTets, ref int numEdges)
@@ -216,6 +223,7 @@ public class XPBDTet : MonoBehaviour
             int id1 = EdgeIdx[2 * i + 1];
             RestEdgeLength[i] = (Pos[id1] - Pos[id0]).magnitude;
         }
+        
     }
 
     //pre solve pass
@@ -223,32 +231,117 @@ public class XPBDTet : MonoBehaviour
     {
         for (int i = 0; i < numParticles; i++)
         {
-            if(InvMass[i] == 0.0f)
+            if(InvMass[i] == 0.0f || i == 200)
                 continue;
 
             Vel[i] += dt * gravity;
             PrevPos[i] = Pos[i];
             Pos[i] += dt * Vel[i];
 
-            float y = Pos[i].y;
-            if (y < 0.0f)
-            {
-                Pos[i] = PrevPos[i];
-                Pos[i].y = 0.0f;
-            }
         }
     }
 
     //solve constraint pass
-    private void SolveConstraint(float dt)
+    private void SolveConstraintXPBD(float dt)
+    {
+        SolveEdgeDistacneConstraintXPBD(dt);
+        
+        SolveTetVolumeConstraintXPBD(dt);
+    }
+    
+    
+    private void SolveEdgeDistacneConstraintXPBD(float dt)
+    {
+        float alpha = invEdgeStiffness / (dt * dt);
+        for (int i = 0; i < numEdges; i++)
+        {
+            int id0 = EdgeIdx[2 * i];
+            int id1 = EdgeIdx[2 * i + 1];
+
+            float invMass0 = InvMass[id0];
+            float invMass1 = InvMass[id1];
+            Vector3 p0 = Pos[id0];
+            Vector3 p1 = Pos[id1];
+            float restLength = RestEdgeLength[i];
+            
+            float K = invMass0 + invMass1;
+            if(K == 0.0f)
+                continue;
+            Vector3 n = p0 - p1;
+            float d = n.magnitude;
+            if (d == 0)
+                continue;
+            float C = d - restLength;
+            K += alpha;
+
+            float Kinv = 1 / K;
+
+            float lambda = -Kinv * (C);
+            Vector3 pt = n * lambda;
+
+            if(id0 != 200)
+                Pos[id0] += invMass0 * pt;
+            if(id1 != 200)
+            Pos[id1] -= invMass1 * pt;
+            
+            if (Pos[id0].y < floorHeight)
+                Pos[id0].y = floorHeight;
+            if (Pos[id1].y < floorHeight)
+                Pos[id1].y = floorHeight;
+        }
+    }
+
+    private void SolveTetVolumeConstraintXPBD(float dt)
+    {
+        float alpha = invVolumeStiffness / (dt * dt);
+        for (int i = 0; i < numTets; i++)
+        {
+            float volume = GetTetVolume(i);
+            int id0 = TetIdx[4 * i];
+            int id1 = TetIdx[4 * i + 1];
+            int id2 = TetIdx[4 * i + 2];
+            int id3 = TetIdx[4 * i + 3];
+
+            float invMass0 = InvMass[id0];
+            float invMass1 = InvMass[id1];
+            float invMass2 = InvMass[id2];
+            float invMass3 = InvMass[id3];
+            
+            Vector3 grad0 = Vector3.Cross((Pos[id1] - Pos[id2]), (Pos[id3] - Pos[id2]));
+            Vector3 grad1 = Vector3.Cross((Pos[id2] - Pos[id0]), (Pos[id3] - Pos[id0]));
+            Vector3 grad2 = Vector3.Cross((Pos[id0] - Pos[id1]), (Pos[id3] - Pos[id1]));
+            Vector3 grad3 = Vector3.Cross((Pos[id1] - Pos[id0]), (Pos[id2] - Pos[id0]));
+
+            float K = invMass0 * grad0.sqrMagnitude + invMass1 * grad1.sqrMagnitude + invMass2 * grad2.sqrMagnitude +
+                      invMass3 * grad3.sqrMagnitude;
+
+            K += alpha;
+            if(K == 0.0f)
+                continue;
+            float Kinv = 1 / K;
+            float C = volume - RestVolumes[i];
+            float lambda = -Kinv * C;
+
+            if(id0 != 200)
+                Pos[id0] += lambda * invMass0 * grad0;
+            if(id1 != 200)
+                Pos[id1] += lambda * invMass1 * grad1;
+            if(id2 != 200)
+                Pos[id2] += lambda * invMass2 * grad2;
+            if(id3 != 200)
+                Pos[id3] += lambda * invMass3 * grad3;
+        }
+    }
+
+    private void SolveConstraintPBD(float dt)
     {
         SolveEdgeDistanceConstraint(dt);
         
         SolveTetVolumeConstraint(dt);
-    }
+    }   
     private void SolveEdgeDistanceConstraint(float dt)
     {
-        float alpha = edgeStiffness / (dt * dt);
+        float alpha = invEdgeStiffness / (dt * dt);
 
         for (int i = 0; i < numEdges; i++)
         {
@@ -270,15 +363,23 @@ public class XPBDTet : MonoBehaviour
             Grad[0] /= len;
             float restLength = RestEdgeLength[i];
             float C = len - restLength;
-            float s = -C / (w + alpha);
+            float gradC_2 = Mathf.Pow(Grad[0].magnitude, 2);
+            float lambda = -C / (w * gradC_2 + alpha);
 
-            Pos[id0] += Grad[0] * s * w0;
-            Pos[id1] -= Grad[0] * s * w1;
+            Pos[id0] += Grad[0] * (lambda * w0);
+            Pos[id1] -= Grad[0] * (lambda * w1);
+
+            if (Pos[id0].y < floorHeight)
+                Pos[id0].y = floorHeight;
+            if (Pos[id1].y < floorHeight)
+                Pos[id1].y = floorHeight;
         }
     }
+
+
     private void SolveTetVolumeConstraint(float dt)
     {
-        float alpha = volumeStiffness / (dt * dt);
+        float alpha = invVolumeStiffness / (dt * dt);
 
         for (int i = 0; i < numTets; i++)
         {
@@ -308,13 +409,17 @@ public class XPBDTet : MonoBehaviour
             float restVol = RestVolumes[i];
             float C = vol - restVol;
             float s = -C / (w + alpha);
-
+            
             for (int j = 0; j < 4; j++)
             {
                 int id = TetIdx[4 * i + j];
                 Pos[id] += Grad[j] * s * InvMass[id];
+                if (Pos[id].y < floorHeight)
+                {
+                    Pos[id].y = floorHeight;
+                }
             }
-
+            
         }
     }
     
@@ -336,5 +441,28 @@ public class XPBDTet : MonoBehaviour
     {
         meshFilter.mesh.vertices = Pos;
         meshFilter.mesh.RecalculateNormals();
+    }
+
+    private void Interaction()
+    {
+        if (Input.GetKey(KeyCode.W))
+        {
+         
+            Pos[200].y += 0.005f;
+        }
+        if (Input.GetKey(KeyCode.S))
+        {
+            
+            Pos[200].y -= 0.005f;
+        }
+        if (Input.GetKey(KeyCode.A))
+        {
+            
+            Pos[200].x += 0.005f;
+        }
+        if (Input.GetKey(KeyCode.D))
+        {
+            Pos[200].x -= 0.005f;
+        }
     }
 }
