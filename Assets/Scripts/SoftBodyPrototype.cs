@@ -300,6 +300,7 @@ public class SoftBodyPrototype : MonoBehaviour
                 Vector3 p = PointMassPositions[i];
                 if (other.bounds.Contains(p))
                 {
+                    Debug.Log(i);
                     // clamp interpenetrating point mass to surface of other collider
                     PointMassPositions[i] = 
                         other.ClosestPoint(p + depenetrationDir * (depenetrationDist + 1.0f));
@@ -331,7 +332,7 @@ public class SoftBodyPrototype : MonoBehaviour
             Debug.LogWarningFormat("{0}>{1} left the play area, and will be respawned", 
                                     transform.parent == null ? "(no parent)" : transform.parent.gameObject.name,                    
                                     gameObject.name);
-            Respawn();
+            //Respawn();
         }
     }
 

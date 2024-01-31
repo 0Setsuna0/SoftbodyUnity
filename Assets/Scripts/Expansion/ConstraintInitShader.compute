@@ -1,0 +1,10 @@
+#pragma kernel InitDistanceConstraint
+
+RWStructuredBuffer<float3> vertexPos;
+
+
+[numthreads(64,1,1)]
+void InitDistanceConstraint (uint3 id : SV_DispatchThreadID)
+{
+    vertexPos[id.x] += float3(1, 1, 1);
+}

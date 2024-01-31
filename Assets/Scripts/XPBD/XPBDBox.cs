@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Common.Mathematics.LinearAlgebra;
+using Unity.Mathematics;
 using UnityEngine;
 
 public class XPBDBox : MonoBehaviour
@@ -28,10 +30,11 @@ public class XPBDBox : MonoBehaviour
     private int[,] FaceConnectionPointIndex;
     private int[,] FaceEdge;
     private int[,] DiagonalEdge;
+    private int[,] Dihedral;
     public float[] FaceConstrainRestLength;
     public float[] DiagionalConstrainRestLength;
-    [SerializeField] private float[] RestTetVolume;
-
+    public float[] RestAngle;
+    
     private float RestVolume;
 
     //components
@@ -82,7 +85,7 @@ public class XPBDBox : MonoBehaviour
         PointsAcceleration = new Vector3[8];
         PointsMass = new float[8];
         PointsInvMass = new float[8];
-        RestTetVolume = new float[12];
+        RestAngle = new float[8];
         FaceNoramls = new Vector3[6];
         
         //init connection index
@@ -119,8 +122,6 @@ public class XPBDBox : MonoBehaviour
             SolveDistanceConstrian(SubDt);
             
             SolveBendingConstrian(SubDt);
-            
-            SolveVolumeConstrain(SubDt);
             
             UpdatePos();
             
@@ -172,29 +173,43 @@ public class XPBDBox : MonoBehaviour
     {
         FaceConnectionPointIndex =
             new int[6, 4]
-            { {3, 2, 1, 0}, {1, 5, 4, 0}, {2, 6, 5, 1}, {3, 7, 6, 2},
-                {0, 4, 7, 3}, {4, 5, 6, 7} };
+            {
+                { 3, 2, 1, 0 }, { 1, 5, 4, 0 }, { 2, 6, 5, 1 }, { 3, 7, 6, 2 },
+                { 0, 4, 7, 3 }, { 4, 5, 6, 7 }
+            };
 
         DiagonalEdge =
-            new int[32, 2]
+            new int[16, 2]
             {
                 // crossing inside hull
-                { 0, 6 }, { 6, 0 }, { 1, 7 }, { 7, 1 }, { 2, 4 }, { 4, 2 }, { 3, 5 }, { 5, 3 },
+                { 0, 6 }, { 1, 7 }, { 2, 4 }, { 3, 5 },
 
                 // diagonals on hull
-                { 3, 1 }, { 1, 3 },
-                { 2, 0 }, { 0, 2 },
-                { 0, 5 }, { 5, 0 },
-                { 4, 1 }, { 1, 4 },
-                { 1, 6 }, { 6, 1 },
-                { 5, 2 }, { 2, 5 },
-                { 2, 7 }, { 7, 2 },
-                { 6, 3 }, { 3, 6 },
-                { 3, 4 }, { 4, 3 },
-                { 7, 0 }, { 0, 7 },
-                { 4, 6 }, { 6, 4 },
-                { 5, 7 }, { 7, 5 }
+                { 3, 1 },
+                { 2, 0 },
+                { 0, 5 },
+                { 4, 1 },
+                { 1, 6 },
+                { 5, 2 },
+                { 2, 7 },
+                { 6, 3 },
+                { 3, 4 },
+                { 7, 0 },
+                { 4, 6 },
+                { 5, 7 }
             };
+
+        Dihedral = new int[8, 4]
+        {
+            { 0, 4, 1, 3 },
+            { 1, 5, 2, 0 },
+            { 2, 6, 3, 1 },
+            { 3, 7, 0, 2 },
+            { 4, 0, 7, 5 },
+            { 5, 1, 4, 6 },
+            { 6, 2, 5, 7 },
+            { 7, 3, 6, 4 }
+        };
     }
     
     private void CalculateRestLength()
@@ -250,34 +265,34 @@ public class XPBDBox : MonoBehaviour
     private void SolveDistanceConstrian(float dtS)
     {
         var alpha = stiffnessInverse / (dtS * dtS);
-        // int numDiagonalConnections = DiagonalEdge.GetLength(0);
-        // for (int i = 0; i < numDiagonalConnections; i++)
-        // {
-        //     int pt0Index = DiagonalEdge[i, 0];
-        //     int pt1Index = DiagonalEdge[i, 1];
-        //     //get particle weight
-        //     float w0 = PointsInvMass[pt0Index];
-        //     float w1 = PointsInvMass[pt1Index];
-        //     float w = w0 + w1;
-        //     if (w == 0.0f)
-        //     {
-        //         continue;
-        //     }
-        //     //calculate current distance
-        //     Vector3 n = PointsPosition[pt0Index] - PointsPosition[pt1Index];
-        //     float d = n.magnitude;
-        //     if (d == 0.0f)
-        //     {
-        //         continue;
-        //     }
-        //     //calculate diff direction
-        //     n /= d;
-        //     //constrain
-        //     float C = d - DiagionalConstrainRestLength[i];
-        //     float s = -C / (w + alpha);
-        //     PBDCorrection[pt0Index] += s * w0 * n;
-        //     PBDCorrection[pt1Index] -= s * w0 * n;
-        // }
+        int numDiagonalConnections = DiagonalEdge.GetLength(0);
+        for (int i = 0; i < numDiagonalConnections; i++)
+        {
+            int pt0Index = DiagonalEdge[i, 0];
+            int pt1Index = DiagonalEdge[i, 1];
+            //get particle weight
+            float w0 = PointsInvMass[pt0Index];
+            float w1 = PointsInvMass[pt1Index];
+            float w = w0 + w1;
+            if (w == 0.0f)
+            {
+                continue;
+            }
+            //calculate current distance
+            Vector3 n = PointsPosition[pt0Index] - PointsPosition[pt1Index];
+            float d = n.magnitude;
+            if (d == 0.0f)
+            {
+                continue;
+            }
+            //calculate diff direction
+            n /= d;
+            //constrain
+            float C = d - DiagionalConstrainRestLength[i];
+            float s = -C / (w + alpha);
+            PBDCorrection[pt0Index] += s * w0 * n;
+            PBDCorrection[pt1Index] -= s * w0 * n;
+        }
         
         int numFaces = FaceConnectionPointIndex.GetLength(0);
         int numPtsPerFace = FaceConnectionPointIndex.GetLength(1);
@@ -289,10 +304,11 @@ public class XPBDBox : MonoBehaviour
                 int pt0Index = FaceConnectionPointIndex[i, j];
                 int pt1Index = FaceConnectionPointIndex[i, (j + 1) % numPtsPerFace];
                 //get particle weight
-                float w0 = PointsInvMass[pt0Index];
-                float w1 = PointsInvMass[pt1Index];
-                float w = w0 + w1;
-                if (w == 0.0f)
+                float invMass0 = PointsInvMass[pt0Index];
+                float invMass1 = PointsInvMass[pt1Index];
+                
+                float K = invMass0 + invMass1;
+                if (K == 0.0f)
                 {
                     continue;
                 }
@@ -307,10 +323,13 @@ public class XPBDBox : MonoBehaviour
                 n /= d;
                 //constrain
                 float C = d - FaceConstrainRestLength[faceConstrainIndex];
-     
-                float s = -C / (w + alpha);
-                PBDCorrection[pt0Index] += s * w0 * n;
-                PBDCorrection[pt1Index] -= s * w0 * n;
+                K += alpha;
+                float Kinv = 1 / K;
+                float lambda = -Kinv * C;
+                Vector3 pt = n * lambda;
+
+                PointsPosition[pt0Index] += pt * invMass0;
+                PointsPosition[pt1Index] -= pt * invMass1;
                 
                 ++faceConstrainIndex;
                 
@@ -328,42 +347,96 @@ public class XPBDBox : MonoBehaviour
             PBDCorrection[i] = new Vector3(0, 0, 0);
         }
     }
-    private void SolveBendingConstrian(float dtS)
-    {
-        
-    }
-    
-    private void SolveVolumeConstrain(float dtS)
-    {
-        CalculateFaceNormals();
-    }
-
-    
     
     private void InitBendingConstrain()
     {
-        CalculateFaceNormals();
-    }
-    private void CalculateFaceNormals()
-    {
-        
-        int numFaces = FaceConnectionPointIndex.GetLength(0);
-
-        for (int i = 0; i < numFaces; i++)
+        for (int i = 0; i < 8; i++)
         {
-            int pt0Index = FaceConnectionPointIndex[i, 0];
-            int pt1Index = FaceConnectionPointIndex[i, 1];
-            int pt2Index = FaceConnectionPointIndex[i, 2];
+            int id0 = Dihedral[i, 0];
+            int id1 = Dihedral[i, 1];
+            int id2 = Dihedral[i, 2];
+            int id3 = Dihedral[i, 3];
 
-            Vector3 edge1 = PointsPosition[pt1Index] - PointsPosition[pt0Index];
-            Vector3 edge2 = PointsPosition[pt2Index] - PointsPosition[pt0Index];
+            Vector3 p0 = PointsPosition[id0];
+            Vector3 p1 = PointsPosition[id1];
+            Vector3 p2 = PointsPosition[id2];
+            Vector3 p3 = PointsPosition[id3];
 
-            Vector3 normal = Vector3.Cross(edge1, edge2).normalized;
+            Vector3 n1 = Vector3.Cross((p1 - p0), (p2 - p0));
+            Vector3 n2 = Vector3.Cross((p3 - p0), (p2 - p0));
 
-            // Store the calculated normal
-            FaceNoramls[i] = normal;
+            n1 /= n1.magnitude;
+            n2 /= n2.magnitude;
+            
+            n1.Normalize();
+            n2.Normalize();
+            float dot = Vector3.Dot(n1, n2);
+            if (dot < -1.0) dot = -1.0f;
+            if (dot > 1.0) dot = 1.0f;
+
+            RestAngle[i] = math.acos(dot);
+
         }
     }
+    
+    private void SolveBendingConstrian(float dtS)
+    {
+        float alpha = 0.5f;
+        for (int i = 0; i < 8; i++)
+        {
+            Vector3 p0 = PointsPosition[Dihedral[i, 0]];
+            Vector3 p1 = PointsPosition[Dihedral[i, 1]];
+            Vector3 p2 = PointsPosition[Dihedral[i, 2]];
+            Vector3 p3 = PointsPosition[Dihedral[i, 3]];
+
+            float invMass = 1;
+
+            Vector3 e = p1 - p0;
+            float elen = e.magnitude;
+            if(elen < 1e-9)
+                continue;
+
+            float invElen = 1 / elen;
+            
+            Vector3 n1 = Vector3.Cross((p1 - p0), (p2 - p0));
+            Vector3 n2 = Vector3.Cross((p3 - p0), (p2 - p0));
+            
+            n1 /= n1.magnitude;
+            n2 /= n2.magnitude;
+            
+            Vector3 d2 = elen * n1;
+            Vector3 d3 = elen * n2;
+            Vector3 d0 = Vector3.Dot(p2 - p1, e) * invElen * n1 + Vector3.Dot(p3 - p1, e) * invElen * n2;
+            Vector3 d1 = Vector3.Dot(p0 - p2, e) * invElen * n1 + Vector3.Dot(p0 - p3, e) * invElen * n2;
+            
+            n1.Normalize();
+            n2.Normalize();
+            float dot = Vector3.Dot(n1, n2);
+            if (dot < -1.0) dot = -1.0f;
+            if (dot > 1.0) dot = 1.0f;
+            float phi = math.acos(dot);
+
+            // fast approximation
+            //double phi = (-0.6981317 * dot * dot - 0.8726646) * dot + 1.570796;	
+
+            float lambda = (d0.sqrMagnitude + d1.sqrMagnitude + d2.sqrMagnitude + d3.sqrMagnitude) * invMass;
+
+            if (lambda == 0.0) return;
+
+            float C = phi - RestAngle[i];
+            lambda = C / lambda * alpha;
+            if (Vector3.Dot(Vector3.Cross(n1, n2), e) > 0.0)
+                lambda = -lambda;
+
+            PointsPosition[Dihedral[i, 0]] += d0 * (-invMass * lambda * dtS);
+            PointsPosition[Dihedral[i, 1]] += d1 * (-invMass * lambda * dtS);
+            PointsPosition[Dihedral[i, 2]] += d2 * (-invMass * lambda * dtS);
+            PointsPosition[Dihedral[i, 3]] += d3 * (-invMass * lambda * dtS);
+
+        }
+    }
+    
+    
     private void CalculateVelocity(float dtS)
     {
         for (int i = 0; i < PointsPosition.Length; i++)

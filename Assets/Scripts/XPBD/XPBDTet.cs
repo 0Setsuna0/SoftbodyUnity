@@ -12,6 +12,7 @@ public class XPBDTet : MonoBehaviour
     private float[] VFile;
     private int[] TetIdx;
     private int[] EdgeIdx;
+        
     public int[] SurfaceIdx;
     public HashSet<int> surfacePoints;
     public int numParticles = 1000;
@@ -273,6 +274,7 @@ public class XPBDTet : MonoBehaviour
             float d = n.magnitude;
             if (d == 0)
                 continue;
+            n /= d;
             float C = d - restLength;
             K += alpha;
 
@@ -284,7 +286,7 @@ public class XPBDTet : MonoBehaviour
             if(id0 != 200)
                 Pos[id0] += invMass0 * pt;
             if(id1 != 200)
-            Pos[id1] -= invMass1 * pt;
+                Pos[id1] -= invMass1 * pt;
             
             if (Pos[id0].y < floorHeight)
                 Pos[id0].y = floorHeight;

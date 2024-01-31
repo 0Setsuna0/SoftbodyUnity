@@ -1,0 +1,27 @@
+#pragma kernel CSMain
+
+struct VertexData
+{
+    float3 position;
+};
+
+RWStructuredBuffer<VertexData> vertices;
+RWStructuredBuffer<float3> normals;
+
+float deltaTime;
+float currentTime;
+float speed;
+
+[numthreads(32, 1, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+
+    float3 normal = normals[index];
+
+    float displacementAmount = sin(currentTime) * 0.1f;
+    
+    float3 newPosition = vertices[index].position + normal * displacementAmount;
+    
+    vertices[index].position = newPosition;
+}

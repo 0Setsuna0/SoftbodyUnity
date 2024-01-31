@@ -155,11 +155,11 @@ MonoBehaviour:
   numParticles: 1000
   numTets: 100
   numEdges: 1000
-  invEdgeStiffness: 0
+  invEdgeStiffness: 5
   edgeInsideConstraintCoef: 1
   edgeSurfaceConstraintCoef: 1
   velDamping: 0.95
-  gravity: {x: 0, y: -9.8, z: 0}
+  gravity: {x: 0, y: 0, z: 0}
   floorHeight: 0
   meshFilter: {fileID: 0}
   meshRenderer: {fileID: 0}
@@ -272,6 +272,50 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 180, z: 0}
+--- !u!1 &1185226604
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1185226606}
+  - component: {fileID: 1185226605}
+  m_Layer: 0
+  m_Name: GameObject (1)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &1185226605
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1185226604}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 761c19deffaa5a643b5fa74db8fe865b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!4 &1185226606
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1185226604}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -8.535275, y: 6.6926246, z: 0.41115445}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1859721075
 GameObject:
   m_ObjectHideFlags: 0
@@ -373,3 +417,4 @@ SceneRoots:
   - {fileID: 479913550}
   - {fileID: 1859721077}
   - {fileID: 184844218}
+  - {fileID: 1185226606}

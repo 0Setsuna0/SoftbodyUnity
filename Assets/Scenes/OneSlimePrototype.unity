@@ -289,10 +289,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cee4a57c08e47fe43b618632bf84ea42, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  PressureMultiplier: 50
+  PressureMultiplier: 83.8
   SpringStiffness: 100
   SpringDamping: 1.5
-  BounceCoefficient: 0.05
+  BounceCoefficient: 0.318
   SlideCoefficient: 0.99
   JumpSpeed: 0
   JumpWaitMin: 0
@@ -317,7 +317,7 @@ Transform:
   m_GameObject: {fileID: 316445957}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -4.852, y: 7.9302316, z: 0.5}
+  m_LocalPosition: {x: -4.07, y: 6.74, z: 0.5}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -450,8 +450,8 @@ Transform:
   m_GameObject: {fileID: 393095749}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -4.25, y: 4.93, z: 1.56}
-  m_LocalScale: {x: 8, y: 0.3571828, z: 8}
+  m_LocalPosition: {x: -5.174, y: 4.93, z: 1.0451}
+  m_LocalScale: {x: 100, y: 0.3571828, z: 100}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -760,13 +760,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 562119025}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: -0.087938115, w: 0.99612594}
-  m_LocalPosition: {x: 2.72, y: 4.86, z: 2.84}
+  m_LocalRotation: {x: 0, y: 0, z: -0.59713537, w: 0.80214053}
+  m_LocalPosition: {x: -2.08, y: 5.47, z: 2.84}
   m_LocalScale: {x: 0.49, y: 4.84, z: 10.2}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: -10.09}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: -73.33}
 --- !u!4 &1102480259 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 664081713ec11414cad58a8414b16bd5,
@@ -790,7 +790,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1151385056
 Transform:
   m_ObjectHideFlags: 0
@@ -828,7 +828,7 @@ MonoBehaviour:
   FaceNoramls: []
   FaceConstrainRestLength: []
   DiagionalConstrainRestLength: []
-  RestTetVolume: []
+  RestAngle: []
   FloorHeight: 5.79
 --- !u!65 &1151385058
 BoxCollider:

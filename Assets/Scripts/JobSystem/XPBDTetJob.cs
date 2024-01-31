@@ -25,7 +25,7 @@ public class XPBDTetJob : MonoBehaviour
     //particle update 
     private NativeArray<Vector3> Pos;
     private NativeArray<Vector3> PrevPos;
-    private NativeArray<Vector3> CorrectionPos;
+    private NativeArray<Vector3> Correction;
     
     private NativeArray<Vector3> Vel;
 
@@ -66,7 +66,7 @@ public class XPBDTetJob : MonoBehaviour
         
         Pos = new NativeArray<Vector3>(numParticles, Allocator.Persistent);
         PrevPos = new NativeArray<Vector3>(numParticles, Allocator.Persistent);
-        CorrectionPos = new NativeArray<Vector3>(numParticles, Allocator.Persistent);
+        Correction = new NativeArray<Vector3>(numParticles, Allocator.Persistent);
         NativeArray<Vector3>.Copy(Vertex, PrevPos, numParticles);
         NativeArray<Vector3>.Copy(Vertex, Pos, numParticles);
         Vel = new NativeArray<Vector3>(numParticles, Allocator.Persistent);
@@ -85,6 +85,7 @@ public class XPBDTetJob : MonoBehaviour
         meshFilter.mesh.triangles = SurfaceIdx.ToArray();
         meshFilter.mesh.RecalculateNormals();
         meshRenderer.material = mat;
+        
         VolIdOrder = new int[4, 3]
         {
             { 1, 3, 2 },
@@ -94,110 +95,84 @@ public class XPBDTetJob : MonoBehaviour
         };
 
         InitPhysics();
-        
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-
-        float dt_s = Time.deltaTime / iterationNum;
-        for (int i = 0; i < iterationNum; i++)
-        {
-            Interaction();
-            
-            PredictPosition(dt_s);
-            
-            SolveConstraintXPBD(dt_s);
-            
-            CalculateVel(dt_s);
-        }
-
-        for (int i = 0; i < Vel.Length; i++)
-        {
-            Vel[i] *= velDamping;
-        }
-        
-        
     }
 
     private void InitializeTetMesh(string filePath, ref int numParticles, ref int numTets, ref int numEdges)
-{
-    string[] lines = File.ReadAllLines(filePath);
-
-    List<float> vFileList = new List<float>();
-    List<int> tetIdxList = new List<int>();
-    List<int> edgeIdxList = new List<int>();
-    List<int> surfaceIdxList = new List<int>();
-
-    int flag = 0;
-
-    foreach (string line in lines)
     {
-        string[] values = line.Split(new char[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
-        if (values.Length == 1)
+        string[] lines = File.ReadAllLines(filePath);
+
+        List<float> vFileList = new List<float>();
+        List<int> tetIdxList = new List<int>();
+        List<int> edgeIdxList = new List<int>();
+        List<int> surfaceIdxList = new List<int>();
+
+        int flag = 0;
+
+        foreach (string line in lines)
         {
-            if (values[0] == "tetIds")
+            string[] values = line.Split(new char[] { ',', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            if (values.Length == 1)
             {
-                flag = 1;
+                if (values[0] == "tetIds")
+                {
+                    flag = 1;
+                }
+                else if (values[0] == "tetEdgeIds")
+                {
+                    flag = 2;
+                }
+                else if (values[0] == "tetSurfaceTriIds")
+                {
+                    flag = 3;
+                }
+                
+                continue;
             }
-            else if (values[0] == "tetEdgeIds")
+
+            for (int j = 0; j < values.Length; j++)
             {
-                flag = 2;
+                if (flag == 0)
+                {
+                    // handle vertex position data
+                    vFileList.Add(float.Parse(values[j]));
+                }
+                else if (flag == 1)
+                {
+                    // handle tet idx data
+                    tetIdxList.Add(int.Parse(values[j]));
+                }
+                else if (flag == 2)
+                {
+                    // handle edge idx data
+                    edgeIdxList.Add(int.Parse(values[j]));
+                }
+                else if (flag == 3)
+                {
+                    // handle surface idx data
+                    surfaceIdxList.Add(int.Parse(values[j]));
+                }
             }
-            else if (values[0] == "tetSurfaceTriIds")
-            {
-                flag = 3;
-            }
-            
-            continue;
         }
 
-        for (int j = 0; j < values.Length; j++)
+        numParticles = vFileList.Count / 3;
+        numTets = tetIdxList.Count / 4;
+        numEdges = edgeIdxList.Count / 2;
+
+        VFile = new NativeArray<float>(vFileList.ToArray(), Allocator.Persistent);
+        TetIdx = new NativeArray<int>(tetIdxList.ToArray(), Allocator.Persistent);
+        EdgeIdx = new NativeArray<int>(edgeIdxList.ToArray(), Allocator.Persistent);
+        SurfaceIdx = new NativeArray<int>(surfaceIdxList.ToArray(), Allocator.Persistent);
+        surfacePoints = new HashSet<int>(SurfaceIdx);
+        // Create Vector3 array from VFile
+        Vertex = new NativeArray<Vector3>(numParticles, Allocator.Persistent);
+        for (int i = 0; i < numParticles; i++)
         {
-            if (flag == 0)
-            {
-                // handle vertex position data
-                vFileList.Add(float.Parse(values[j]));
-            }
-            else if (flag == 1)
-            {
-                // handle tet idx data
-                tetIdxList.Add(int.Parse(values[j]));
-            }
-            else if (flag == 2)
-            {
-                // handle edge idx data
-                edgeIdxList.Add(int.Parse(values[j]));
-            }
-            else if (flag == 3)
-            {
-                // handle surface idx data
-                surfaceIdxList.Add(int.Parse(values[j]));
-            }
+            Vertex[i] = new Vector3(VFile[3 * i], VFile[3 * i + 1], VFile[3 * i + 2]);
         }
+
+        VFile.Dispose();
     }
-
-    numParticles = vFileList.Count / 3;
-    numTets = tetIdxList.Count / 4;
-    numEdges = edgeIdxList.Count / 2;
-
-    VFile = new NativeArray<float>(vFileList.ToArray(), Allocator.Persistent);
-    TetIdx = new NativeArray<int>(tetIdxList.ToArray(), Allocator.Persistent);
-    EdgeIdx = new NativeArray<int>(edgeIdxList.ToArray(), Allocator.Persistent);
-    SurfaceIdx = new NativeArray<int>(surfaceIdxList.ToArray(), Allocator.Persistent);
-    surfacePoints = new HashSet<int>(SurfaceIdx);
-    // Create Vector3 array from VFile
-    Vertex = new NativeArray<Vector3>(numParticles, Allocator.Persistent);
-    for (int i = 0; i < numParticles; i++)
-    {
-        Vertex[i] = new Vector3(VFile[3 * i], VFile[3 * i + 1], VFile[3 * i + 2]);
-    }
-
-    VFile.Dispose();
-}
-
-
+    
     private float GetTetVolume(int nr)
     {
         int id0 = TetIdx[4 * nr];
@@ -248,31 +223,46 @@ public class XPBDTetJob : MonoBehaviour
         }
         
     }
+    // Update is called once per frame
+    void Update()
+    {
+        float dt_s = Time.deltaTime / iterationNum;
+        for (int i = 0; i < iterationNum; i++)
+        {
+            
+            PredictPosition(dt_s);
+            
+            SolveConstraintXPBD(dt_s);
+            
+            CalculateVel(dt_s);
+        }
+
+        for (int i = 0; i < Vel.Length; i++)
+        {
+            Vel[i] *= velDamping;
+        }
+    }
+
+    private void FixedUpdate()
+    {
+        Interaction();
+    }
+
 
     //pre solve pass
     private void PredictPosition(float dt)
     {
-        // for (int i = 0; i < numParticles; i++)
-        // {
-        //     if(InvMass[i] == 0.0f || i == 200)
-        //         continue;
-        //
-        //     Vel[i] += dt * gravity;
-        //     PrevPos[i] = Pos[i];
-        //     Pos[i] += dt * Vel[i];
-        //
-        // }
         PresolvePass presolvePassJob = new PresolvePass()
         {
-            Gravity = this.gravity,
-            dt = dt,
-            InvMass = this.InvMass,
-            PrevPos = this.PrevPos,
-            Vel = this.Vel,
-            Pos = this.Pos,
+            _Gravity = this.gravity,
+            _dt = dt,
+            _InvMass = this.InvMass,
+            _PrevPos = this.PrevPos,
+            _Vel = this.Vel,
+            _Pos = this.Pos,
         };
 
-        JobHandle presolveJobHandle = presolvePassJob.Schedule(Pos.Length, 16);
+        JobHandle presolveJobHandle = presolvePassJob.Schedule(Pos.Length, 32);
         
         presolveJobHandle.Complete();
         
@@ -281,52 +271,9 @@ public class XPBDTetJob : MonoBehaviour
     //solve constraint pass
     private void SolveConstraintXPBD(float dt)
     {
-        SolveEdgeDistacneConstraintXPBD(dt);
+        SolveEdgeDistacneConstraintXPBDJob(dt);
         
-        SolveTetVolumeConstraintXPBD(dt);
-    }
-    
-    
-    private void SolveEdgeDistacneConstraintXPBD(float dt)
-    {
-        float alpha = invEdgeStiffness / (dt * dt);
-        for (int i = 0; i < numEdges; i++)
-        {
-            int id0 = EdgeIdx[2 * i];
-            int id1 = EdgeIdx[2 * i + 1];
-
-            float coef = edgeSurfaceConstraintCoef;
-            float invMass0 = InvMass[id0];
-            float invMass1 = InvMass[id1];
-            Vector3 p0 = Pos[id0];
-            Vector3 p1 = Pos[id1];
-            float restLength = RestEdgeLength[i] * coef;
-            
-            float K = invMass0 + invMass1;
-            if(K == 0.0f)
-                continue;
-            Vector3 n = p0 - p1;
-            float d = n.magnitude;
-            if (d == 0)
-                continue;
-            float C = d - restLength;
-            K += alpha;
-
-            float Kinv = 1 / K;
-
-            float lambda = -Kinv * (C);
-            Vector3 pt = n * lambda;
-
-            if(id0 != 200)
-                Pos[id0] += invMass0 * pt;
-            if(id1 != 200)
-                Pos[id1] -= invMass1 * pt;
-            
-            if (Pos[id0].y < floorHeight)
-                Pos[id0] = new Vector3(Pos[id0].x, floorHeight, Pos[id0].z);
-            if (Pos[id1].y < floorHeight)
-                Pos[id1] = new Vector3(Pos[id1].x, floorHeight, Pos[id1].z);
-        }
+        SolveTetVolumeConstraintXPBDJob(dt);
     }
 
     private void SolveEdgeDistacneConstraintXPBDJob(float dt)
@@ -339,7 +286,7 @@ public class XPBDTetJob : MonoBehaviour
             _InvMass = InvMass,
             _Pos = Pos,
             _alpha = alpha,
-            _Correction = CorrectionPos,
+            _Correction = Correction,
         };
 
         JobHandle solveDistanceHandle = solveDistanceJob.Schedule(numEdges, 32);
@@ -347,74 +294,44 @@ public class XPBDTetJob : MonoBehaviour
 
         CorrectPosPass correctPosJob = new CorrectPosPass()
         {
-            _Correction = CorrectionPos,
+            _Correction = Correction,
             _Pos = Pos,
         };
         JobHandle correctPosHandle = correctPosJob.Schedule(numParticles, 32);
         correctPosHandle.Complete();
     }
 
-    private void CorrectPos()
-    {
-        
-    }
-    private void SolveTetVolumeConstraintXPBD(float dt)
+    private void SolveTetVolumeConstraintXPBDJob(float dt)
     {
         float alpha = invVolumeStiffness / (dt * dt);
-        for (int i = 0; i < numTets; i++)
+        SolveVolumeConstraintPass solveVolumeJob = new SolveVolumeConstraintPass()
         {
-            float volume = GetTetVolume(i);
-            int id0 = TetIdx[4 * i];
-            int id1 = TetIdx[4 * i + 1];
-            int id2 = TetIdx[4 * i + 2];
-            int id3 = TetIdx[4 * i + 3];
+            _alpha = alpha,
+            _TetIdx = TetIdx,
+            _Pos = Pos,
+            _InvMass = InvMass,
+            _RestVolume = RestVolumes,
 
-            float invMass0 = InvMass[id0];
-            float invMass1 = InvMass[id1];
-            float invMass2 = InvMass[id2];
-            float invMass3 = InvMass[id3];
-            
-            Vector3 grad0 = Vector3.Cross((Pos[id1] - Pos[id2]), (Pos[id3] - Pos[id2]));
-            Vector3 grad1 = Vector3.Cross((Pos[id2] - Pos[id0]), (Pos[id3] - Pos[id0]));
-            Vector3 grad2 = Vector3.Cross((Pos[id0] - Pos[id1]), (Pos[id3] - Pos[id1]));
-            Vector3 grad3 = Vector3.Cross((Pos[id1] - Pos[id0]), (Pos[id2] - Pos[id0]));
+            _Correction = Correction
+        };
 
-            float K = invMass0 * grad0.sqrMagnitude + invMass1 * grad1.sqrMagnitude + invMass2 * grad2.sqrMagnitude +
-                      invMass3 * grad3.sqrMagnitude;
+        JobHandle solveVolumeHandle = solveVolumeJob.Schedule(numTets, 32);
+        solveVolumeHandle.Complete();
 
-            K += alpha;
-            if(K == 0.0f)
-                continue;
-            float Kinv = 1 / K;
-            float C = volume - RestVolumes[i] * edgeSurfaceConstraintCoef * edgeSurfaceConstraintCoef *
-                edgeSurfaceConstraintCoef;
-            
-            float lambda = -Kinv * C;
-
-            if(id0 != 200)
-                Pos[id0] += lambda * invMass0 * grad0;
-            if(id1 != 200)
-                Pos[id1] += lambda * invMass1 * grad1;
-            if(id2 != 200)
-                Pos[id2] += lambda * invMass2 * grad2;
-            if(id3 != 200)
-                Pos[id3] += lambda * invMass3 * grad3;
-        }
+        CorrectPosPass correctPosJob = new CorrectPosPass()
+        {
+            _Correction = Correction,
+            _Pos = Pos,
+        };
+        JobHandle correctPosHandle = correctPosJob.Schedule(numParticles, 32);
+        correctPosHandle.Complete();
     }
+    
     
     //post solve pass
     private void CalculateVel(float dt)
     {
-        for (int i = 0; i < numParticles; i++)
-        {
-            if (InvMass[i] == 0.0)
-            {
-                continue;
-            }
-
-            Vel[i] = (Pos[i] - PrevPos[i]) / dt;
-        }
-
+        
         PostsolvePass postsolvePassJob = new PostsolvePass()
         {
             _InvMass = this.InvMass,
@@ -423,15 +340,10 @@ public class XPBDTetJob : MonoBehaviour
             _Vel = this.Vel,
             _dt = dt,
         };
-
+        
         JobHandle postsolveJobHandle = postsolvePassJob.Schedule(Vel.Length, 32);
         postsolveJobHandle.Complete();
-        meshFilter.mesh.SetVertices(postsolvePassJob._Pos);
-        meshFilter.mesh.RecalculateNormals();
-    }
-    private void UpdateMeshData()
-    {
-        meshFilter.mesh.vertices = Pos.ToArray();
+        meshFilter.mesh.SetVertices(Pos);
         meshFilter.mesh.RecalculateNormals();
     }
 
@@ -440,21 +352,21 @@ public class XPBDTetJob : MonoBehaviour
         if (Input.GetKey(KeyCode.W))
         {
          
-            Pos[200] += new Vector3(0,0.005f,0);
+            Pos[200] += new Vector3(0,0.08f,0);
         }
         if (Input.GetKey(KeyCode.S))
         {
             
-            Pos[200] -= new Vector3(0,0.005f,0);
+            Pos[200] -= new Vector3(0,0.08f,0);
         }
         if (Input.GetKey(KeyCode.A))
         {
             
-            Pos[200] += new Vector3(0.005f,0,0);
+            Pos[200] += new Vector3(0.08f,0,0);
         }
         if (Input.GetKey(KeyCode.D))
         {
-            Pos[200] -= new Vector3(0.005f,0,0);
+            Pos[200] -= new Vector3(0.08f,0,0);
         }
     }
 
@@ -462,7 +374,7 @@ public class XPBDTetJob : MonoBehaviour
     {
         Pos.Dispose();
         PrevPos.Dispose();
-        CorrectionPos.Dispose();
+        Correction.Dispose();
         Vel.Dispose();
         InvMass.Dispose();
 

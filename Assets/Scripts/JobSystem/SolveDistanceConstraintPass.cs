@@ -17,10 +17,9 @@ public struct SolveDistanceConstraintPass : IJobParallelFor
     [ReadOnly] public NativeArray<Vector3> _Pos;
     [ReadOnly] public float _alpha;
 
-    [WriteOnly] public NativeArray<Vector3> _Correction;
+    [NativeDisableParallelForRestriction]
+    public NativeArray<Vector3> _Correction;
     
-    [NativeDisableUnsafePtrRestriction]
-    public AtomicSafetyHandle _SafetyHandle;
     public void Execute(int index)
     {
         int id0 = _EdgeIdx[2 * index];
@@ -38,7 +37,9 @@ public struct SolveDistanceConstraintPass : IJobParallelFor
         float d = n.magnitude;
         if(d == 0.0f)
             return;
+        
         float C = d - _RestLength[index];
+        //Debug.Log(_RestLength[index]);
         K += _alpha;
 
         float Kinv = 1 / K;
@@ -46,10 +47,10 @@ public struct SolveDistanceConstraintPass : IJobParallelFor
         float lambda = -Kinv * (C);
         Vector3 pt = n * lambda;
         
-            // if (id0 != 200)
-            //     _Correction[id0] += invMass0 * pt;
-            // if (id1 != 200)
-            //     _Correction[id1] -= invMass1 * pt;
+        if (id0 != 200)
+            _Correction[id0] += invMass0 * pt;
+        if (id1 != 200)
+            _Correction[id1] -= invMass1 * pt;
         
     }
     
