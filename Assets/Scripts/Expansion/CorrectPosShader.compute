@@ -1,0 +1,18 @@
+#pragma kernel CSMain
+
+
+RWStructuredBuffer<float3> _correction;
+RWStructuredBuffer<float3> _pos;
+
+[numthreads(64,1,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    if(id.x == 200)
+        return;
+    int idx = id.x;
+    _pos[idx] += _correction[idx];
+    _correction[idx] = float3(0, 0, 0);
+
+    if(_pos[idx].y < -4.0f)
+        _pos[idx].y = -4.0f;
+}

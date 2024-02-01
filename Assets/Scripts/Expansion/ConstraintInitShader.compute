@@ -1,10 +1,26 @@
-#pragma kernel InitDistanceConstraint
+#pragma kernel InitDistanceConstraintPass
+#pragma kernel InitBendingConstraintPass
 
-RWStructuredBuffer<float3> vertexPos;
+RWStructuredBuffer<float3> _vertexPos;
+RWStructuredBuffer<int2> _edgeIdx;
+RWStructuredBuffer<float> _restDistance;
 
-
-[numthreads(64,1,1)]
-void InitDistanceConstraint (uint3 id : SV_DispatchThreadID)
+//calculate particle-particle edge rest length
+[numthreads(64, 1, 1)]
+void InitDistanceConstraintPass (uint3 id : SV_DispatchThreadID)
 {
-    vertexPos[id.x] += float3(1, 1, 1);
+    int edgeid = id.x;
+    int id0 = _edgeIdx[edgeid][0];
+    int id1 = _edgeIdx[edgeid][1];
+
+    float3 pos0 = _vertexPos[id0];
+    float3 pos1 = _vertexPos[id1];
+
+    _restDistance[edgeid] = length(pos0 - pos1);
+}
+
+[numthreads(64, 1, 1)]
+void InitBendingConstraintPass(uint3 id : SV_DispatchThreadID)
+{
+    
 }

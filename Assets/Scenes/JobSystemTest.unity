@@ -155,7 +155,7 @@ MonoBehaviour:
   numParticles: 1000
   numTets: 100
   numEdges: 1000
-  invEdgeStiffness: 5
+  invEdgeStiffness: 0
   edgeInsideConstraintCoef: 1
   edgeSurfaceConstraintCoef: 1
   velDamping: 0.95

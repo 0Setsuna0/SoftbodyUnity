@@ -668,7 +668,7 @@ public class SoftBodyPrototype : MonoBehaviour
             Gizmos.DrawLine(b, c);
             Gizmos.DrawLine(c, d);
             Gizmos.DrawLine(d, a);
-
+            
             // face normals
             Gizmos.color = Color.blue;        
             Vector3 faceNormal = CalcCross(a, b, c).normalized;

@@ -1,0 +1,51 @@
+#pragma kernel SolveDistancePass
+
+RWStructuredBuffer<float> _restLength;
+RWStructuredBuffer<float> _invMass;
+RWStructuredBuffer<float3> _correction;
+RWStructuredBuffer<float3> _pos;
+RWStructuredBuffer<int2> _edgeIdx;
+
+float _alpha;
+
+[numthreads(64, 1, 1)]
+void SolveDistancePass (uint3 id : SV_DispatchThreadID)
+{
+    int edgeid = id.x;
+
+    int id0 = _edgeIdx[edgeid][0];
+    int id1 = _edgeIdx[edgeid][1];
+
+    float invMass0 = _invMass[id0];
+    float invMass1 = _invMass[id1];
+    
+    float3 pos0 = _pos[id0];
+    float3 pos1 = _pos[id1];
+
+    const float restLength = _restLength[edgeid];
+
+    float K = invMass0 + invMass1;
+    if(K == 0.0f)
+        return;
+
+    float3 n = pos0 - pos1;
+    float d = length(n);
+    if(d == 0.0f)
+        return;
+    
+    float C = d - restLength;
+    K += _alpha;
+    
+    float Kinv = 1 / K;
+
+    float lambda = -Kinv * C;
+    float3 pt = n * lambda;
+    
+    //atomic add
+    DeviceMemoryBarrier();
+    if(id0 != 1000)
+        _correction[id0] += invMass0 * pt;
+    if(id1 != 1000)
+        _correction[id1] -= invMass1 * pt;
+    
+}

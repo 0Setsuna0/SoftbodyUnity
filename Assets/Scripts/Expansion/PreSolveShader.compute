@@ -1,0 +1,19 @@
+#pragma kernel PreSolvePass
+
+RWStructuredBuffer<float3> _pos;
+RWStructuredBuffer<float3> _vel;
+RWStructuredBuffer<float3> _prevPos;
+float4 _gravity;
+float _dt;
+
+[numthreads(64,1,1)]
+void PreSolvePass (uint3 id : SV_DispatchThreadID)
+{
+
+    if(id.x == 200)
+        return;
+    int idx = id.x;
+    _vel[idx] += float3(_gravity.x, _gravity.y, _gravity.z) * _dt;
+    _prevPos[idx] = _pos[idx];
+    _pos[idx] += _vel[idx] * _dt;
+}

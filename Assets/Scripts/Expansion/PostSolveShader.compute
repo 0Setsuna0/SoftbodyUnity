@@ -1,0 +1,16 @@
+#pragma kernel PostSolvePass
+
+RWStructuredBuffer<float3> _pos;
+RWStructuredBuffer<float3> _prevPos;
+RWStructuredBuffer<float3> _vel;
+float _dt;
+
+[numthreads(64, 1, 1)]
+void PostSolvePass (uint3 id : SV_DispatchThreadID)
+{
+    if(id.x == 200)
+        return;
+    int idx = id.x;
+
+    _vel[idx] = (_pos[idx] - _prevPos[idx]) / _dt;
+}
