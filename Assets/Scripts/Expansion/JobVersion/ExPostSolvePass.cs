@@ -21,3 +21,13 @@ public struct ExPostSolvePass : IJobParallelFor
         _Vel[index] = (_Pos[index] - _PrevPos[index]) / _dt;
     }
 }
+
+[BurstCompile]
+public struct ExReSetXPBDParam : IJobParallelFor
+{
+    [WriteOnly] public NativeArray<float> _DistanceLambda;
+    public void Execute(int index)
+    {
+        _DistanceLambda[index] = 0.0f;
+    }
+}

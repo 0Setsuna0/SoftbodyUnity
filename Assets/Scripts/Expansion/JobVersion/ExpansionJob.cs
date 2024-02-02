@@ -7,6 +7,7 @@ using Unity.Jobs;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
+using UnityEngine.Serialization;
 
 public class ExpansionJob : MonoBehaviour
 {
@@ -21,12 +22,23 @@ public class ExpansionJob : MonoBehaviour
     public NativeArray<Vector3> Vel;
 
     public NativeArray<float> RestLength;
+    public NativeArray<float> DistanceLambda;
     public NativeArray<float> InvMass;
+    public NativeArray<float> VolBuffer;
 
-    public int iterationNum = 10;
+    
+    public int outerIterationNum = 10;
+    public int inerIterationNum = 1;
+    public int triangleNum;
+    public int vertexNum;
     public bool drawFlag = true;
 
     public float invEdgeStiffness = 0.0f;
+    private float invVolumeStiffness = 0.0f;
+    public float restVolume;
+    public float currentVolume;
+    public float pressure = 1;
+    public float VolumeLambda = 0;
     public Vector3 gravity = new Vector3(0, -9.8f, 0);
     void Awake()
     {
@@ -38,13 +50,21 @@ public class ExpansionJob : MonoBehaviour
     // Update is called once per frame
     void Update()
     {
-        float dt = Time.deltaTime / iterationNum;
+        float dt = Time.deltaTime / outerIterationNum;
 
-        for (int i = 0; i < iterationNum; i++)
+        for (int i = 0; i < outerIterationNum; i++)
         {
             PreSolve(dt);
             
-            SolveDistance(dt);
+            for (int j = 0; j < inerIterationNum; j++)
+            {
+                SolveDistance(dt);
+            }
+
+            for (int k = 0; k < inerIterationNum; k++)
+            {
+                SolveVolume(dt);
+            }
             
             PostSolve(dt);
         }
@@ -55,10 +75,12 @@ public class ExpansionJob : MonoBehaviour
         meshFilter = GetComponent<MeshFilter>();
         mesh = meshFilter.mesh;
 
+        vertexNum = mesh.vertices.Length;
+        
         Triangles = new NativeArray<int>(mesh.triangles.Length, Allocator.Persistent);
         ConvertToNativeArray(mesh.triangles, Triangles);
 
-        int triangleNum = Triangles.Length / 3;
+        triangleNum = Triangles.Length / 3;
         HashSet<int2> edgeSet = new HashSet<int2>();
         for (int i = 0; i < triangleNum; i++)
         {
@@ -97,8 +119,12 @@ public class ExpansionJob : MonoBehaviour
         InvMass = new NativeArray<float>(mesh.vertices.Length, Allocator.Persistent);
         Pos = new NativeArray<Vector3>(mesh.vertices.Length, Allocator.Persistent);
         PrevPos = new NativeArray<Vector3>(mesh.vertices.Length, Allocator.Persistent);
+        Correction = new NativeArray<Vector3>(mesh.vertices.Length, Allocator.Persistent);
         Vel = new NativeArray<Vector3>(mesh.vertices.Length, Allocator.Persistent);
+        VolBuffer = new NativeArray<float>(1, Allocator.Persistent);
         RestLength = new NativeArray<float>(Edges.Length, Allocator.Persistent);
+        DistanceLambda = new NativeArray<float>(Edges.Length, Allocator.Persistent);
+        
         for (int i = 0; i < mesh.vertices.Length; i++)
         {
             Pos[i] = mesh.vertices[i];
@@ -111,6 +137,14 @@ public class ExpansionJob : MonoBehaviour
             int id0 = Edges[i][0];
             int id1 = Edges[i][1];
             RestLength[i] = (Pos[id0] - Pos[id1]).magnitude;
+        }
+
+        for (int i = 0; i < Triangles.Length / 3; i++)
+        {
+            int id0 = Triangles[3 * i];
+            int id1 = Triangles[3 * i + 1];
+            int id2 = Triangles[3 * i + 2];
+            restVolume += Vector3.Dot(Pos[id0], Vector3.Cross(Pos[id1], Pos[id2])) / 6;
         }
     }
 
@@ -136,18 +170,78 @@ public class ExpansionJob : MonoBehaviour
         float alpha = invEdgeStiffness / (dt_s * dt_s);
         ExSolveDistancePass solveDistanceJob = new ExSolveDistancePass()
         {
-            _RestLength = RestLength,
-            _EdgeIdx = Edges,
-            _InvMass = InvMass,
-            _Pos = Pos,
+            _RestLength = this.RestLength,
+            _EdgeIdx = this.Edges,
+            _InvMass = this.InvMass,
+            _Pos = this.Pos,
             _alpha = alpha,
-            _Correction = Correction,
+            _Correction = this.Correction,
+            _Lambda = this.DistanceLambda
         };
+
+        JobHandle solveDistanceJobHandle = solveDistanceJob.Schedule(Edges.Length, 32);
+        solveDistanceJobHandle.Complete();
+
+        ExCorrectionPass correctJob = new ExCorrectionPass()
+        {
+            _Pos = this.Pos,
+            _Correction = this.Correction,
+        };
+
+        JobHandle correctJobHandle = correctJob.Schedule(Pos.Length, 32);
+        correctJobHandle.Complete();
     }
 
     private void SolveVolume(float dt_s)
     {
+        float alpha = invVolumeStiffness / (dt_s * dt_s);
         
+        currentVolume = 0.0f;
+        for (int i = 0; i < triangleNum; i++)
+        {
+            int id0 = Triangles[3 * i];
+            int id1 = Triangles[3 * i + 1];
+            int id2 = Triangles[3 * i + 2];
+            currentVolume += Vector3.Dot(Pos[id0], Vector3.Cross(Pos[id1], Pos[id2])) / 6;
+        }
+
+        currentVolume = Mathf.Abs(currentVolume);
+        float C = currentVolume - pressure * restVolume;
+        
+        //gradient of C
+        ExSolveVolumeSubPass1 solveVolumeSubJob1 = new ExSolveVolumeSubPass1()
+        {
+            _Pos = this.Pos,
+            _Correction = this.Correction,
+            _Triangles = this.Triangles,
+        };
+
+        JobHandle solveVolumeSubJobHandle1 = solveVolumeSubJob1.Schedule(triangleNum, 32);
+        solveVolumeSubJobHandle1.Complete();
+        
+        //K
+        float K = alpha;
+        for (int i = 0; i < vertexNum; i++)
+        {
+            K += InvMass[i] * Vector3.Dot(Correction[i], Correction[i]);
+            //Correction[i] = Vector3.zero;
+        }
+       
+        //correct
+        float deltaLambda = (-C - alpha * VolumeLambda) / K;
+        ExSolveVolumeSubPass2 solveVolumeSubJob2 = new ExSolveVolumeSubPass2()
+        {
+            _Pos = this.Pos,
+            _Correction = this.Correction,
+            _InvMass = this.InvMass,
+            _DeltaLambda = deltaLambda,
+        };
+
+        JobHandle solveVolumeSubJobHandle2 = solveVolumeSubJob2.Schedule(Pos.Length, 32);
+        solveVolumeSubJobHandle2.Complete();
+
+        //update lambda
+        VolumeLambda += deltaLambda;
     }
     
     private void PostSolve(float dt_s)
@@ -163,6 +257,15 @@ public class ExpansionJob : MonoBehaviour
 
         JobHandle postSolveJobHandle = postSolveJob.Schedule(Pos.Length, 32);
         postSolveJobHandle.Complete();
+
+        ExReSetXPBDParam reSetXpbdParam = new ExReSetXPBDParam()
+        {
+            _DistanceLambda = this.DistanceLambda
+        };
+        JobHandle resetXpbdJobHandle = reSetXpbdParam.Schedule(Edges.Length, 32);
+        resetXpbdJobHandle.Complete();
+
+        VolumeLambda = 0.0f;
         
         mesh.vertices = Pos.ToArray();
         mesh.RecalculateNormals();

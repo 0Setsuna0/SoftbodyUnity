@@ -181,6 +181,11 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: -5754084199372789682, guid: 2d5edc39a71a84e4c8b629479518ce8b,
+        type: 3}
+      propertyPath: m_Mesh
+      value: 
+      objectReference: {fileID: 4300000, guid: 9fe95f8f76975ea4c9ccc25ce9d9bde2, type: 3}
     - target: {fileID: 919132149155446097, guid: 2d5edc39a71a84e4c8b629479518ce8b,
         type: 3}
       propertyPath: m_Name
@@ -314,9 +319,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   meshFilter: {fileID: 0}
   mesh: {fileID: 0}
-  iterationNum: 10
+  outerIterationNum: 1
+  inerIterationNum: 20
+  triangleNum: 0
+  vertexNum: 0
   drawFlag: 0
-  gravity: {x: 0, y: -9.8, z: 0}
+  invEdgeStiffness: 0.001
+  restVolume: 0
+  currentVolume: 0
+  pressure: 1
+  VolumeLambda: 0
+  gravity: {x: 0, y: -1, z: 0}
 --- !u!1 &786017938 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 2d5edc39a71a84e4c8b629479518ce8b,

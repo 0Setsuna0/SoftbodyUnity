@@ -15,8 +15,10 @@ public struct ExSolveDistancePass : IJobParallelFor
     [ReadOnly] public NativeArray<Vector3> _Pos;
     [ReadOnly] public float _alpha;
 
+    public NativeArray<float> _Lambda;
     [NativeDisableParallelForRestriction]
     public NativeArray<Vector3> _Correction;
+    
     
     public void Execute(int index)
     {
@@ -33,22 +35,25 @@ public struct ExSolveDistancePass : IJobParallelFor
             return;
         Vector3 n = p0 - p1;
         float d = n.magnitude;
-        if(d == 0.0f)
-            return;
         n /= d;
         
         float C = d - _RestLength[index];
         K += _alpha;
 
-        float Kinv = 1 / K;
+        float Kinv = 0;
+        if(math.abs(K) > 1e-6)
+            Kinv = 1 / K;
+        else
+        {
+            return;
+        }
 
-        float lambda = -Kinv * (C);
-        Vector3 pt = n * lambda;
+        float deltaLambda = Kinv * (-C - _alpha * _Lambda[index]);
+        _Lambda[index] += deltaLambda;
+        Vector3 pt = n * deltaLambda;
         
-        if (id0 != 200)
-            _Correction[id0] += invMass0 * pt;
-        if (id1 != 200)
-            _Correction[id1] -= invMass1 * pt;
+        _Correction[id0] += invMass0 * pt;
+        _Correction[id1] -= invMass1 * pt;
         
     }
 }
