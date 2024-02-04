@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Policy;
 using UnityEngine;
 using Unity.Jobs;
 using Unity.Burst;
@@ -59,10 +60,7 @@ public class ExpansionJob : MonoBehaviour
             for (int j = 0; j < inerIterationNum; j++)
             {
                 SolveDistance(dt);
-            }
-
-            for (int k = 0; k < inerIterationNum; k++)
-            {
+                
                 SolveVolume(dt);
             }
             
@@ -76,11 +74,32 @@ public class ExpansionJob : MonoBehaviour
         mesh = meshFilter.mesh;
 
         vertexNum = mesh.vertices.Length;
-        
         Triangles = new NativeArray<int>(mesh.triangles.Length, Allocator.Persistent);
         ConvertToNativeArray(mesh.triangles, Triangles);
 
         triangleNum = Triangles.Length / 3;
+    }
+
+    private void InitPhysics()
+    {
+        //remove reapting vertex index
+        int index = 0;
+        Dictionary<Vector3, int> posDictionary = new Dictionary<Vector3, int>();
+        for (int i = 0; i < mesh.vertices.Length; i++)
+        {
+            if (!posDictionary.ContainsKey(mesh.vertices[i]))
+            {
+                posDictionary.Add(mesh.vertices[i], index++);
+            }
+        }
+        Debug.Log(posDictionary.Count);
+        vertexNum = posDictionary.Count;
+
+        for (int i = 0; i < Triangles.Length; i++)
+        {
+            Triangles[i] = posDictionary[mesh.vertices[Triangles[i]]];
+        }
+
         HashSet<int2> edgeSet = new HashSet<int2>();
         for (int i = 0; i < triangleNum; i++)
         {
@@ -96,42 +115,59 @@ public class ExpansionJob : MonoBehaviour
             int2 edge3_inv = new int2(id0, id2);
 
             
-            if (!edgeSet.Contains(edge1) && !edgeSet.Contains(edge1_inv))
+            if (!edgeSet.Contains(edge1))
             {
                 edgeSet.Add(edge1);
             }
-            if (!edgeSet.Contains(edge2) && !edgeSet.Contains(edge2_inv))
+
+            if (!edgeSet.Contains(edge1_inv))
+            {
+                edgeSet.Add(edge1_inv);
+            }
+            if (!edgeSet.Contains(edge2))
             {
                 edgeSet.Add(edge2);
             }
-            if (!edgeSet.Contains(edge3) && !edgeSet.Contains(edge3_inv))
+
+            if (!edgeSet.Contains(edge2_inv))
+            {
+                edgeSet.Add(edge2_inv);
+            }
+            if (!edgeSet.Contains(edge3))
             {
                 edgeSet.Add(edge3);
+            }
+
+            if (!edgeSet.Contains(edge3_inv))
+            {
+                edgeSet.Add(edge3_inv);
             }
         }
 
         Edges = new NativeArray<int2>(edgeSet.Count, Allocator.Persistent);
         ConvertToNativeArray(edgeSet.ToArray(), Edges);
-    }
-
-    private void InitPhysics()
-    {
-        InvMass = new NativeArray<float>(mesh.vertices.Length, Allocator.Persistent);
-        Pos = new NativeArray<Vector3>(mesh.vertices.Length, Allocator.Persistent);
-        PrevPos = new NativeArray<Vector3>(mesh.vertices.Length, Allocator.Persistent);
-        Correction = new NativeArray<Vector3>(mesh.vertices.Length, Allocator.Persistent);
-        Vel = new NativeArray<Vector3>(mesh.vertices.Length, Allocator.Persistent);
+        
+        InvMass = new NativeArray<float>(vertexNum, Allocator.Persistent);
+        Pos = new NativeArray<Vector3>(vertexNum, Allocator.Persistent);
+        PrevPos = new NativeArray<Vector3>(vertexNum, Allocator.Persistent);
+        Correction = new NativeArray<Vector3>(vertexNum, Allocator.Persistent);
+        Vel = new NativeArray<Vector3>(vertexNum, Allocator.Persistent);
         VolBuffer = new NativeArray<float>(1, Allocator.Persistent);
+        
         RestLength = new NativeArray<float>(Edges.Length, Allocator.Persistent);
         DistanceLambda = new NativeArray<float>(Edges.Length, Allocator.Persistent);
         
-        for (int i = 0; i < mesh.vertices.Length; i++)
+        for (int i = 0; i < posDictionary.Keys.Count; i++)
         {
-            Pos[i] = mesh.vertices[i];
-            PrevPos[i] = mesh.vertices[i];
-            InvMass[i] = 1.0f;
+            Vector3 originalPos = posDictionary.Keys.ElementAt(i);
+            int newIndex = posDictionary[originalPos];
+            
+            Pos[newIndex] = originalPos;
+            PrevPos[newIndex] = originalPos;
+            
+            InvMass[newIndex] = 1.0f;
         }
-
+        
         for (int i = 0; i < Edges.Length; i++)
         {
             int id0 = Edges[i][0];
@@ -160,7 +196,7 @@ public class ExpansionJob : MonoBehaviour
             _Pos = this.Pos,
         };
 
-        JobHandle preSolveJobHandle = preSolveJob.Schedule(Pos.Length, 32);
+        JobHandle preSolveJobHandle = preSolveJob.Schedule(vertexNum, 32);
         
         preSolveJobHandle.Complete();
     }
@@ -188,7 +224,7 @@ public class ExpansionJob : MonoBehaviour
             _Correction = this.Correction,
         };
 
-        JobHandle correctJobHandle = correctJob.Schedule(Pos.Length, 32);
+        JobHandle correctJobHandle = correctJob.Schedule(vertexNum, 32);
         correctJobHandle.Complete();
     }
 
@@ -237,7 +273,7 @@ public class ExpansionJob : MonoBehaviour
             _DeltaLambda = deltaLambda,
         };
 
-        JobHandle solveVolumeSubJobHandle2 = solveVolumeSubJob2.Schedule(Pos.Length, 32);
+        JobHandle solveVolumeSubJobHandle2 = solveVolumeSubJob2.Schedule(vertexNum, 32);
         solveVolumeSubJobHandle2.Complete();
 
         //update lambda
@@ -255,7 +291,7 @@ public class ExpansionJob : MonoBehaviour
             _Vel = this.Vel,
         };
 
-        JobHandle postSolveJobHandle = postSolveJob.Schedule(Pos.Length, 32);
+        JobHandle postSolveJobHandle = postSolveJob.Schedule(vertexNum, 32);
         postSolveJobHandle.Complete();
 
         ExReSetXPBDParam reSetXpbdParam = new ExReSetXPBDParam()
@@ -266,9 +302,11 @@ public class ExpansionJob : MonoBehaviour
         resetXpbdJobHandle.Complete();
 
         VolumeLambda = 0.0f;
-        
+
+        mesh.triangles = Triangles.ToArray();
         mesh.vertices = Pos.ToArray();
         mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
     }
     public void ConvertToNativeArray<T>(T[] managedArray, NativeArray<T> dst) where T : struct
     {

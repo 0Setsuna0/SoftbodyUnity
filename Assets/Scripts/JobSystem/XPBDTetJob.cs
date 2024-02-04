@@ -34,8 +34,9 @@ public class XPBDTetJob : MonoBehaviour
     private float invVolumeStiffness = 0;
 
     
-    public float edgeInsideConstraintCoef = 1;
-    public float edgeSurfaceConstraintCoef = 1;
+    public float pressure = 1;
+    public float pressured = 1;
+    
     public float velDamping = 0.95f;
     
     //tet
@@ -70,7 +71,7 @@ public class XPBDTetJob : MonoBehaviour
         NativeArray<Vector3>.Copy(Vertex, PrevPos, numParticles);
         NativeArray<Vector3>.Copy(Vertex, Pos, numParticles);
         Vel = new NativeArray<Vector3>(numParticles, Allocator.Persistent);
-
+        
         RestVolumes = new NativeArray<float>(numTets, Allocator.Persistent);
         RestEdgeLength = new NativeArray<float>(numEdges, Allocator.Persistent);
         Temp = new NativeArray<Vector3>(4, Allocator.Persistent);
@@ -286,6 +287,7 @@ public class XPBDTetJob : MonoBehaviour
             _InvMass = InvMass,
             _Pos = Pos,
             _alpha = alpha,
+            _coef = pressured,
             _Correction = Correction,
         };
 
@@ -311,7 +313,7 @@ public class XPBDTetJob : MonoBehaviour
             _Pos = Pos,
             _InvMass = InvMass,
             _RestVolume = RestVolumes,
-
+            _ExpansionCoef = pressured * pressured * pressured,
             _Correction = Correction
         };
 

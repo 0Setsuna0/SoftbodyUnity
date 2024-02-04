@@ -14,6 +14,7 @@ public struct SolveVolumeConstraintPass : IJobParallelFor
     [ReadOnly] public NativeArray<Vector3> _Pos;
     [ReadOnly] public NativeArray<float> _InvMass;
     [ReadOnly] public NativeArray<float> _RestVolume;
+    [ReadOnly] public float _ExpansionCoef;
     
     [NativeDisableParallelForRestriction]
     public NativeArray<Vector3> _Correction;
@@ -42,7 +43,7 @@ public struct SolveVolumeConstraintPass : IJobParallelFor
         if(K == 0.0)
             return;
         float Kinv = 1 / K;
-        float C = volume - _RestVolume[index];
+        float C = volume - _ExpansionCoef * _RestVolume[index];
         float lambda = -Kinv * C;
 
         if (id0 != 200)

@@ -31,23 +31,15 @@ public struct ExSolveDistancePass : IJobParallelFor
         Vector3 p1 = _Pos[id1];
 
         float K = invMass1 + invMass0;
-        if(K == 0.0f)
-            return;
         Vector3 n = p0 - p1;
         float d = n.magnitude;
-        n /= d;
         
         float C = d - _RestLength[index];
         K += _alpha;
 
         float Kinv = 0;
-        if(math.abs(K) > 1e-6)
-            Kinv = 1 / K;
-        else
-        {
-            return;
-        }
-
+        Kinv = 1 / K;
+        
         float deltaLambda = Kinv * (-C - _alpha * _Lambda[index]);
         _Lambda[index] += deltaLambda;
         Vector3 pt = n * deltaLambda;

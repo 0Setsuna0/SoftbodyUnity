@@ -16,7 +16,7 @@ public struct SolveDistanceConstraintPass : IJobParallelFor
     [ReadOnly] public NativeArray<float> _InvMass;
     [ReadOnly] public NativeArray<Vector3> _Pos;
     [ReadOnly] public float _alpha;
-
+    [ReadOnly] public float _coef;
     [NativeDisableParallelForRestriction]
     public NativeArray<Vector3> _Correction;
     
@@ -38,7 +38,7 @@ public struct SolveDistanceConstraintPass : IJobParallelFor
         if(d == 0.0f)
             return;
         
-        float C = d - _RestLength[index];
+        float C = d -  _coef * _RestLength[index];
         //Debug.Log(_RestLength[index]);
         K += _alpha;
 
