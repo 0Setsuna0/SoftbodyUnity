@@ -43,7 +43,7 @@ public struct ExSolveVolumeSubPass2 : IJobParallelFor
     public NativeArray<Vector3> _Pos;
     public void Execute(int index)
     {
-        _Pos[index] += 0.25f * _InvMass[index] * _DeltaLambda * _Correction[index];
+        _Pos[index] +=  _InvMass[index] * _DeltaLambda * _Correction[index];
         _Correction[index] = Vector3.zero;
     }
 }

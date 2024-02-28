@@ -28,6 +28,7 @@ using g3;
 // use more performant and modular coding practices, such as the ECS and Job System.
 public class SoftBodyPrototype : MonoBehaviour
 {
+    
     #region soft body simulation inspector coefficients
     [Range(0.0f, 100.0f)]
     [Tooltip("Strength of forces to maintain constant volume")]
@@ -63,19 +64,18 @@ public class SoftBodyPrototype : MonoBehaviour
     [Tooltip("Max. seconds between land and jump")]
     public float JumpWaitMax = 4.0f;
 
-    [Header("�ն�ϵ��")]
-    public int w;
-
+    public bool dynamic = true;
+    
     private float JumpWait;
     private float LandedTime;
     #endregion
-
+    
     #region point mass and hull face private state
     public Vector3[] PointMassAccelerations;
     private Vector3[] PointMassVelocities;
     [SerializeField]
     private Vector3[] PointMassPositions;
-
+    private Vector3[] RestOffset;
     private Vector3[] FaceNormals;
     private float[] FaceAreas;
     #endregion
@@ -107,6 +107,7 @@ public class SoftBodyPrototype : MonoBehaviour
     [SerializeField]
     private Vector3 initialOffset;
 
+    
     private ContOrientedBox3 obb;
     private void Awake()
     {
@@ -142,6 +143,7 @@ public class SoftBodyPrototype : MonoBehaviour
         PointMassAccelerations = new Vector3[8];
         PointMassVelocities = new Vector3[8];
         PointMassPositions = new Vector3[8];
+        RestOffset = new Vector3[8];
 
         InitializePointMassPositionsToBoundingBox();
         InitializePointMassIndexesForBoundingBox();
@@ -188,6 +190,7 @@ public class SoftBodyPrototype : MonoBehaviour
         for (int i = 0; i < 8; i++)
         {
             corners[i] = childTransform.TransformPoint(corners[i]);
+            RestOffset[i] = corners[i] - childTransform.TransformPoint(childMeshBounds.center);
         }
 
         // 设置点的位置
@@ -348,7 +351,7 @@ public class SoftBodyPrototype : MonoBehaviour
         }
 
         AccumulateSpringForces();
-        //AccumulatePressureForces();
+        AccumulatePressureForces();
 
         // Jump every few seconds, to keep the simulation lively
         Vector3 jumpVelocity = new Vector3(0.0f, 0.0f, 0.0f);
@@ -514,68 +517,79 @@ public class SoftBodyPrototype : MonoBehaviour
 
     private void SolveForVelocitiesAndPositions(float deltaTime, Vector3 jumpVelocity)
     {
-        // solve for velocities and positions of point masses, and recalculate the bounding box
-        Bounds ptBounds = new Bounds();
-        for (int i = 0; i < PointMassPositions.Length; ++i)
+        if (dynamic)
         {
-            
-            PointMassVelocities[i] += PointMassAccelerations[i] * deltaTime + jumpVelocity;
-            PointMassPositions[i] += PointMassVelocities[i] * deltaTime;
-            if (i == 0)
+            // solve for velocities and positions of point masses, and recalculate the bounding box
+            Bounds ptBounds = new Bounds();
+            for (int i = 0; i < PointMassPositions.Length; ++i)
             {
-                ptBounds = new Bounds(PointMassPositions[i], new Vector3(0, 0, 0));
+                
+                PointMassVelocities[i] += PointMassAccelerations[i] * deltaTime + jumpVelocity;
+                PointMassPositions[i] += PointMassVelocities[i] * deltaTime;
+                if (i == 0)
+                {
+                    ptBounds = new Bounds(PointMassPositions[i], new Vector3(0, 0, 0));
+                }
+                else
+                {
+                    ptBounds.Encapsulate(PointMassPositions[i]);
+                }
+
+
+            } ;
+            // The position and scale are set to fit the TriggerCollider (BoxCollider) to be
+            // a conservative bounds for the point masses. Also, the child mesh will inherit this 
+            // transform, and go squish, etc.
+            if (HasNaN(ptBounds.center) || HasNaN(ptBounds.size))
+            {
+                Debug.LogWarningFormat("{0}>{1} simulation destabilized, NaN detected, and will be respawned",
+                                        transform.parent == null ? "(no parent)" : transform.parent.gameObject.name,
+                                        gameObject.name);
+
+                Respawn();
             }
             else
             {
-                ptBounds.Encapsulate(PointMassPositions[i]);
+                Vector3 currentEdgeX = PointMassPositions[0] - PointMassPositions[3];
+                Vector3 currentEdgeY = PointMassPositions[0] - PointMassPositions[4];
+                Vector3 currentEdgeZ = PointMassPositions[0] - PointMassPositions[1];
+
+                currentEdgeX /= currentEdgeX.magnitude;
+                currentEdgeY /= currentEdgeY.magnitude;
+                currentEdgeZ /= currentEdgeZ.magnitude;
+                
+                Vector3 standardEdgeX = new Vector3(1, 0, 0);
+                Vector3 standardEdgeY = new Vector3(0, 1, 0);
+                Vector3 standardEdgeZ = new Vector3(0, 0, 1);
+                
+                Quaternion rotX = Quaternion.FromToRotation(standardEdgeX, currentEdgeX);
+                Quaternion rotY = Quaternion.FromToRotation(standardEdgeY, currentEdgeY);
+                Quaternion rotZ = Quaternion.FromToRotation(standardEdgeZ, currentEdgeZ);
+
+                Quaternion totalRotation = rotX * rotY * rotZ;
+                
+                transform.rotation = totalRotation;
+                
+                transform.localScale = new Vector3(
+                    (PointMassPositions[0] - PointMassPositions[3]).magnitude / MappingCoef.x,
+                    (PointMassPositions[0] - PointMassPositions[4]).magnitude / MappingCoef.y,
+                    (PointMassPositions[0] - PointMassPositions[1]).magnitude / MappingCoef.z);
+                
+                Vector3 rotatedTempOffset = totalRotation * initialOffset;
+
+                Vector3 center = PointMassPositions[0] - currentEdgeX / 2 - currentEdgeY / 2 - currentEdgeZ / 2;
+                transform.position = ptBounds.center + new Vector3(rotatedTempOffset.x * transform.localScale.x,
+                    rotatedTempOffset.y * transform.localScale.y, rotatedTempOffset.z * transform.localScale.z);
             }
-
-
-        } ;
-        // The position and scale are set to fit the TriggerCollider (BoxCollider) to be
-        // a conservative bounds for the point masses. Also, the child mesh will inherit this 
-        // transform, and go squish, etc.
-        if (HasNaN(ptBounds.center) || HasNaN(ptBounds.size))
-        {
-            Debug.LogWarningFormat("{0}>{1} simulation destabilized, NaN detected, and will be respawned",
-                                    transform.parent == null ? "(no parent)" : transform.parent.gameObject.name,
-                                    gameObject.name);
-
-            Respawn();
         }
         else
         {
-            Vector3 currentEdgeX = PointMassPositions[0] - PointMassPositions[3];
-            Vector3 currentEdgeY = PointMassPositions[0] - PointMassPositions[4];
-            Vector3 currentEdgeZ = PointMassPositions[0] - PointMassPositions[1];
-
-            currentEdgeX /= currentEdgeX.magnitude;
-            currentEdgeY /= currentEdgeY.magnitude;
-            currentEdgeZ /= currentEdgeZ.magnitude;
-            
-            Vector3 standardEdgeX = new Vector3(1, 0, 0);
-            Vector3 standardEdgeY = new Vector3(0, 1, 0);
-            Vector3 standardEdgeZ = new Vector3(0, 0, 1);
-            
-            Quaternion rotX = Quaternion.FromToRotation(standardEdgeX, currentEdgeX);
-            Quaternion rotY = Quaternion.FromToRotation(standardEdgeY, currentEdgeY);
-            Quaternion rotZ = Quaternion.FromToRotation(standardEdgeZ, currentEdgeZ);
-
-            Quaternion totalRotation = rotX;
-            
-            transform.rotation = totalRotation;
-            
-            transform.localScale = new Vector3(
-                (PointMassPositions[0] - PointMassPositions[3]).magnitude / MappingCoef.x,
-                (PointMassPositions[0] - PointMassPositions[4]).magnitude / MappingCoef.y,
-                (PointMassPositions[0] - PointMassPositions[1]).magnitude / MappingCoef.z);
-            
-            Vector3 rotatedTempOffset = totalRotation * initialOffset;
-
-            Vector3 center = PointMassPositions[0] - currentEdgeX / 2 - currentEdgeY / 2 - currentEdgeZ / 2;
-            transform.position = ptBounds.center + new Vector3(rotatedTempOffset.x * transform.localScale.x,
-                rotatedTempOffset.y * transform.localScale.y, rotatedTempOffset.z * transform.localScale.z);
+            for (int i = 0; i < PointMassPositions.Length; i++)
+            {
+                PointMassPositions[i] = childTransform.TransformPoint(childMeshBounds.center) + RestOffset[i];
+            }
         }
+        
     }
 
     

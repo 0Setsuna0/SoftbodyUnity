@@ -322,15 +322,11 @@ MonoBehaviour:
   mesh: {fileID: 0}
   outerIterationNum: 1
   inerIterationNum: 10
-  triangleNum: 0
-  vertexNum: 0
-  drawFlag: 1
-  invEdgeStiffness: 0
-  restVolume: 0
-  currentVolume: 0
+  drawFlag: 0
+  invEdgeStiffness: 1
   pressure: 1
-  VolumeLambda: 0
   gravity: {x: 0, y: 0, z: 0}
+  damping: 1
 --- !u!1 &786017938 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 2d5edc39a71a84e4c8b629479518ce8b,

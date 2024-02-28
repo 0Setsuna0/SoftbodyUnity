@@ -25,22 +25,23 @@ public class ExpansionJob : MonoBehaviour
     public NativeArray<float> RestLength;
     public NativeArray<float> DistanceLambda;
     public NativeArray<float> InvMass;
-    public NativeArray<float> VolBuffer;
-
     
     public int outerIterationNum = 10;
     public int inerIterationNum = 1;
-    public int triangleNum;
-    public int vertexNum;
+    private int triangleNum;
+    private int vertexNum;
     public bool drawFlag = true;
 
-    public float invEdgeStiffness = 0.0f;
+    [Range(0.25f,1.0f)]
+    public float invEdgeStiffness = 0.25f;
     private float invVolumeStiffness = 0.0f;
-    public float restVolume;
-    public float currentVolume;
+    private float restVolume;
+    private float currentVolume;
     public float pressure = 1;
-    public float VolumeLambda = 0;
+    private float VolumeLambda = 0;
+    
     public Vector3 gravity = new Vector3(0, -9.8f, 0);
+    public float damping = 0.95f;
     void Awake()
     {
         MeshDataInit();
@@ -152,8 +153,6 @@ public class ExpansionJob : MonoBehaviour
         PrevPos = new NativeArray<Vector3>(vertexNum, Allocator.Persistent);
         Correction = new NativeArray<Vector3>(vertexNum, Allocator.Persistent);
         Vel = new NativeArray<Vector3>(vertexNum, Allocator.Persistent);
-        VolBuffer = new NativeArray<float>(1, Allocator.Persistent);
-        
         RestLength = new NativeArray<float>(Edges.Length, Allocator.Persistent);
         DistanceLambda = new NativeArray<float>(Edges.Length, Allocator.Persistent);
         
@@ -203,7 +202,7 @@ public class ExpansionJob : MonoBehaviour
     
     private void SolveDistance(float dt_s)
     {
-        float alpha = invEdgeStiffness / (dt_s * dt_s);
+        float alpha = 0.0f / (dt_s * dt_s);
         ExSolveDistancePass solveDistanceJob = new ExSolveDistancePass()
         {
             _RestLength = this.RestLength,
@@ -222,8 +221,9 @@ public class ExpansionJob : MonoBehaviour
         {
             _Pos = this.Pos,
             _Correction = this.Correction,
+            _stiffness = this.invEdgeStiffness
         };
-
+        
         JobHandle correctJobHandle = correctJob.Schedule(vertexNum, 32);
         correctJobHandle.Complete();
     }
@@ -289,6 +289,7 @@ public class ExpansionJob : MonoBehaviour
             _PrevPos = this.PrevPos,
             _dt = dt_s,
             _Vel = this.Vel,
+            _damping = this.damping,
         };
 
         JobHandle postSolveJobHandle = postSolveJob.Schedule(vertexNum, 32);

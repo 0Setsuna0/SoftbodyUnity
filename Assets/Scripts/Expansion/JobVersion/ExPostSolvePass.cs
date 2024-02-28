@@ -12,13 +12,14 @@ public struct ExPostSolvePass : IJobParallelFor
     [ReadOnly] public NativeArray<Vector3> _Pos;
     [ReadOnly] public NativeArray<Vector3> _PrevPos;
     [ReadOnly] public float _dt;
-
+    [ReadOnly] public float _damping;
+    
     [WriteOnly] public NativeArray<Vector3> _Vel;
     public void Execute(int index)
     {
         if(_InvMass[index] == 0.0f)
             return;
-        _Vel[index] = (_Pos[index] - _PrevPos[index]) / _dt;
+        _Vel[index] = ((_Pos[index] - _PrevPos[index]) / _dt) * _damping;
     }
 }
 

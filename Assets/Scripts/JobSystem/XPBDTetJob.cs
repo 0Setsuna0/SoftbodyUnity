@@ -15,8 +15,8 @@ public class XPBDTetJob : MonoBehaviour
     private NativeArray<float> VFile;
     private NativeArray<int> TetIdx;
     private NativeArray<int> EdgeIdx;
-    public NativeArray<int> SurfaceIdx;
-    public HashSet<int> surfacePoints;
+    private NativeArray<int> SurfaceIdx;
+    private HashSet<int> surfacePoints;
     public int numParticles = 1000;
     public int numTets = 100;
     public int numEdges = 1000;
@@ -32,9 +32,7 @@ public class XPBDTetJob : MonoBehaviour
     //constraint
     public float invEdgeStiffness;
     private float invVolumeStiffness = 0;
-
     
-    public float pressure = 1;
     public float pressured = 1;
     
     public float velDamping = 0.95f;
