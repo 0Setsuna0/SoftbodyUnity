@@ -290,7 +290,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   PressureMultiplier: 83.8
-  SpringStiffness: 100
+  SpringStiffness: 56.9
   SpringDamping: 1.5
   BounceCoefficient: 0.318
   SlideCoefficient: 0.99

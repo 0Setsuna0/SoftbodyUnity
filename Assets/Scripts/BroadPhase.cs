@@ -1,34 +1,9 @@
-/*
- * This is the main code file for a prototype simulation of soft body physics <https://github.com/chrismarch/SoftBodySimulation>
- *
- * Copyright (C) 2018 Chris March <https://github.com/chrismarch>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
-
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using g3;
-// Simulates soft body physics using point masses connected by springs, and pressure on the faces
-// of the hull formed by the point masses, to simulate a contained fluid.
-//
-// This is a prototype, constructed with one MonoBehavior, and is intended to be refactored to
-// use more performant and modular coding practices, such as the ECS and Job System.
-public class SoftBodyPrototype : MonoBehaviour
+
+public class BroadPhase : MonoBehaviour
 {
-    
     #region soft body simulation inspector coefficients
     [Range(0.0f, 100.0f)]
     [Tooltip("Strength of forces to maintain constant volume")]
@@ -49,6 +24,9 @@ public class SoftBodyPrototype : MonoBehaviour
     [Range(0.0f, 1.0f)]
     [Tooltip("Percentage of impact velocity maintained to slide along surface")]
     public float SlideCoefficient = .99f;
+
+    [Range(0.02f, 1.2f)] [Tooltip("User defined compression coef")]
+    public float compressionCoef;
     #endregion
 
     #region jumping: inspector properties and private state
@@ -65,17 +43,15 @@ public class SoftBodyPrototype : MonoBehaviour
     public float JumpWaitMax = 4.0f;
 
     public bool dynamic = true;
-    
-    private float JumpWait;
-    private float LandedTime;
     #endregion
-    
+
     #region point mass and hull face private state
-    public Vector3[] PointMassAccelerations;
+    private Vector3[] PointMassAccelerations;
     private Vector3[] PointMassVelocities;
-    [SerializeField]
     private Vector3[] PointMassPositions;
+
     private Vector3[] RestOffset;
+    
     private Vector3[] FaceNormals;
     private float[] FaceAreas;
     #endregion
@@ -95,29 +71,25 @@ public class SoftBodyPrototype : MonoBehaviour
     // components to cache for use during updates
     // TODO write an ECS/Job System version and see how the perf. is for naive custom collision testing
     private BoxCollider TriggerCollider;
-
-    public MeshFilter childMeshFilter;
+    
+    public SkinnedMeshRenderer ChildMeshRenderer;
     public Mesh childMesh;
     public Bounds childMeshBounds;
 
     public Vector3 MappingCoef;
-    private Transform fatherTransform;
-    [SerializeField]
-    private Transform childTransform;
+    public Transform childTransform;
     [SerializeField]
     private Vector3 initialOffset;
-
+    public float initialHeight;
     
-    private ContOrientedBox3 obb;
+    public bool debugModel = true;
+    
     private void Awake()
     {
-        fatherTransform = GetComponent<Transform>();
-        childTransform = fatherTransform.GetChild(0);
-        
         TriggerCollider = GetComponent<BoxCollider>();
-        childMeshFilter = GetComponentInChildren<MeshFilter>();
-        
-        childMesh = childMeshFilter.mesh;
+        ChildMeshRenderer = GetComponentInChildren<SkinnedMeshRenderer>();
+
+        childMesh = ChildMeshRenderer.sharedMesh;
         childMeshBounds = childMesh.bounds;
         
         // 获取子物体的局部包围盒中心
@@ -127,7 +99,7 @@ public class SoftBodyPrototype : MonoBehaviour
         Vector3 worldBoundsCenter = childTransform.TransformPoint(localBoundsCenter);
 
         // 使用子物体网格的包围盒的世界中心来设置父物体的 BoxCollider 中心
-        TriggerCollider.center = fatherTransform.InverseTransformPoint(worldBoundsCenter);
+        TriggerCollider.center = transform.InverseTransformPoint(worldBoundsCenter);
 
         // 考虑子物体的缩放，使用子物体网格的包围盒的大小和子物体的缩放来设置父物体的 BoxCollider 大小
         Vector3 scaledBoundsSize = new Vector3(
@@ -167,14 +139,16 @@ public class SoftBodyPrototype : MonoBehaviour
             // static, just initialize once
             PlayAreaTriggerLayer = LayerMask.NameToLayer("Play Area"); 
         }
-        
+
+        initialHeight = PointMassPositions[0].y - PointMassPositions[4].y;
     }
 
     private void InitializePointMassPositionsToBoundingBox()
     {
         // 使用子物体网格的包围盒
         Bounds childMeshBounds = childMesh.bounds;
-
+        Vector3 center = childTransform.TransformPoint(childMeshBounds.center);
+        
         // 获取子物体网格的包围盒的8个角的位置
         Vector3[] corners = new Vector3[8];
         corners[0] = childMeshBounds.center + new Vector3(childMeshBounds.size.x, childMeshBounds.size.y, childMeshBounds.size.z) / 2;
@@ -275,14 +249,10 @@ public class SoftBodyPrototype : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        // the TriggerCollider just touched another collider
-
         // track landing on a surface, for the jump behavior
         if (other.gameObject.layer != PlayAreaTriggerLayer && 
             other.transform.position.y < transform.position.y)
         {
-            LandedTime = Time.time;
-            JumpWait = Random.Range(JumpWaitMin, JumpWaitMax);
         }
     }
 
@@ -303,7 +273,6 @@ public class SoftBodyPrototype : MonoBehaviour
                 Vector3 p = PointMassPositions[i];
                 if (other.bounds.Contains(p))
                 {
-                    Debug.Log(i);
                     // clamp interpenetrating point mass to surface of other collider
                     PointMassPositions[i] = 
                         other.ClosestPoint(p + depenetrationDir * (depenetrationDist + 1.0f));
@@ -347,12 +316,14 @@ public class SoftBodyPrototype : MonoBehaviour
         for (int i = 0; i < PointMassAccelerations.Length; ++i)
         {
             // simplify force to acceleration, as mass == 1
-            PointMassAccelerations[i] = Physics.gravity;
+            PointMassAccelerations[i] = Physics.gravity / 2;
         }
-
+        
+        ApplyCoef();
+        
         AccumulateSpringForces();
         AccumulatePressureForces();
-        
+       
         SolveForVelocitiesAndPositions(Time.fixedDeltaTime);
     }
 
@@ -428,9 +399,9 @@ public class SoftBodyPrototype : MonoBehaviour
     // an approximately fixed volume fluid (like water)
     private void AccumulatePressureForces()
     {
-            float volume =
-            transform.localScale.x * transform.localScale.y * transform.localScale.z;
+        float volume = transform.localScale.x * transform.localScale.y * transform.localScale.z;
 
+        //calculate ratio
         float volumeRatio = volume / HullRestVolume;
         float surfaceArea = 0.0f;
         int numFaces = FacePointMassIndexes.GetLength(0);
@@ -513,6 +484,28 @@ public class SoftBodyPrototype : MonoBehaviour
         pos[idx1].x = pos[idx2].x;
         pos[idx1].z = pos[idx2].z;
     }
+
+    private void ApplyCoef()
+    {
+        float topHeight = PointMassPositions[4].y + initialHeight * compressionCoef;
+        Vector3 depenetrationDir = new Vector3(0, -1, 0);
+        if (PointMassPositions[0].y > topHeight)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                PointMassPositions[i].y = topHeight;
+                
+                float speedAlongNormalSigned = Vector3.Dot(PointMassVelocities[i], depenetrationDir);
+                float speedAlongNormalSign = Mathf.Sign(speedAlongNormalSigned);
+                Vector3 velocityAlongNormal = speedAlongNormalSigned * depenetrationDir;
+                Vector3 slideVelocity = PointMassVelocities[i] - velocityAlongNormal;
+                velocityAlongNormal *= speedAlongNormalSign; // reflect if opposing
+
+                float bounceCoefficient = (speedAlongNormalSign >= 0.0f ? 1.0f : BounceCoefficient);
+                PointMassVelocities[i] = bounceCoefficient * velocityAlongNormal + slideVelocity * SlideCoefficient;
+            }
+        }
+    }
     
     private void SolveForVelocitiesAndPositions(float deltaTime)
     {
@@ -522,7 +515,7 @@ public class SoftBodyPrototype : MonoBehaviour
             Bounds ptBounds = new Bounds();
             for (int i = 0; i < PointMassPositions.Length; ++i)
             {
-                
+      
                 PointMassVelocities[i] += PointMassAccelerations[i] * deltaTime;
                 PointMassPositions[i] += PointMassVelocities[i] * deltaTime;
                 
@@ -534,14 +527,14 @@ public class SoftBodyPrototype : MonoBehaviour
                 {
                     ptBounds.Encapsulate(PointMassPositions[i]);
                 }
+            }
 
-                PointMassPositions[0].y = PointMassPositions[1].y = PointMassPositions[2].y = PointMassPositions[3].y;
-                PointMassPositions[4].y = PointMassPositions[5].y = PointMassPositions[6].y = PointMassPositions[7].y;
-                CorrectVerticalPos(PointMassPositions, 0, 4);
-                CorrectVerticalPos(PointMassPositions, 1, 5);
-                CorrectVerticalPos(PointMassPositions, 2, 6);
-                CorrectVerticalPos(PointMassPositions, 3, 7);
-            } ;
+            PointMassPositions[0].y = PointMassPositions[1].y = PointMassPositions[2].y = PointMassPositions[3].y;
+            CorrectVerticalPos(PointMassPositions, 0, 4);
+            CorrectVerticalPos(PointMassPositions, 1, 5);
+            CorrectVerticalPos(PointMassPositions, 2, 6);
+            CorrectVerticalPos(PointMassPositions, 3, 7);
+            
             // The position and scale are set to fit the TriggerCollider (BoxCollider) to be
             // a conservative bounds for the point masses. Also, the child mesh will inherit this 
             // transform, and go squish, etc.
@@ -567,31 +560,25 @@ public class SoftBodyPrototype : MonoBehaviour
                 Vector3 standardEdgeY = new Vector3(0, 1, 0);
                 Vector3 standardEdgeZ = new Vector3(0, 0, 1);
                 
-                Quaternion rotX = Quaternion.FromToRotation(standardEdgeX, currentEdgeX);
-                Quaternion rotY = Quaternion.FromToRotation(standardEdgeY, currentEdgeY);
-                Quaternion rotZ = Quaternion.FromToRotation(standardEdgeZ, currentEdgeZ);
-
-                Quaternion totalRotation = rotX * rotY * rotZ;
                 
-                transform.rotation = totalRotation;
+                //transform.rotation = totalRotation;
                 
                 transform.localScale = new Vector3(
                     (PointMassPositions[0] - PointMassPositions[3]).magnitude / MappingCoef.x,
                     (PointMassPositions[0] - PointMassPositions[4]).magnitude / MappingCoef.y,
                     (PointMassPositions[0] - PointMassPositions[1]).magnitude / MappingCoef.z);
                 
-                Vector3 rotatedTempOffset = totalRotation * initialOffset;
 
                 Vector3 center = PointMassPositions[0] - currentEdgeX / 2 - currentEdgeY / 2 - currentEdgeZ / 2;
-                transform.position = ptBounds.center + new Vector3(rotatedTempOffset.x * transform.localScale.x,
-                    rotatedTempOffset.y * transform.localScale.y, rotatedTempOffset.z * transform.localScale.z);
+                transform.position = ptBounds.center + new Vector3(initialOffset.x * transform.localScale.x,
+                    initialOffset.y * transform.localScale.y, initialOffset.z * transform.localScale.z);
             }
         }
         else
         {
-            for (int i = 0; i < PointMassPositions.Length; i++)
+            for (int i = 0; i < 8; i++)
             {
-                PointMassPositions[i] = childTransform.TransformPoint(childMeshBounds.center) + RestOffset[i];
+                PointMassPositions[i] = transform.TransformPoint(RestOffset[i] + childMeshBounds.center);
                 transform.localScale = new Vector3(1, 1, 1);
             }
         }
@@ -656,7 +643,7 @@ public class SoftBodyPrototype : MonoBehaviour
 
     private void OnDrawGizmos()
     {
-        if (PointMassPositions == null || PointMassPositions.Length < 4)
+        if (PointMassPositions == null || PointMassPositions.Length < 4 || !debugModel)
             return;
 
         // draw the top point masses
