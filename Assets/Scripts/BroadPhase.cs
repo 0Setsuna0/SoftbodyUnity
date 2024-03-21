@@ -530,6 +530,7 @@ public class BroadPhase : MonoBehaviour
             }
 
             PointMassPositions[0].y = PointMassPositions[1].y = PointMassPositions[2].y = PointMassPositions[3].y;
+            PointMassPositions[4].y = PointMassPositions[5].y = PointMassPositions[6].y = PointMassPositions[7].y;
             CorrectVerticalPos(PointMassPositions, 0, 4);
             CorrectVerticalPos(PointMassPositions, 1, 5);
             CorrectVerticalPos(PointMassPositions, 2, 6);
