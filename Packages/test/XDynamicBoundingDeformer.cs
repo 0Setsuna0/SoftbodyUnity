@@ -1,23 +1,12 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using Sirenix.OdinInspector;
-using Unity.Mathematics;
 using UnityEngine;
-using UnityEngine.Serialization;
-
 namespace XRender.Scripting
 {
-    public class BoundingDeform : MonoBehaviour
+    public class XDynamicBoundingDeformer : MonoBehaviour
     {
-        public enum LerpType
-        {
-            [LabelText("曲线")]
-            Curve,
-            [LabelText("简单线性")]
-            Linear
-        }
-
         public enum ImpactType
         {
             Top,
@@ -75,9 +64,6 @@ namespace XRender.Scripting
         
         private float appliedForce = 200;
         
-        public LerpType lerpType;
-        public AnimationCurve curve;
-        
         public bool dynamic = false;
         public bool needCompressing = false;
         public bool fixBottom = false;
@@ -106,6 +92,8 @@ namespace XRender.Scripting
         private Surface _tempSurface;
         
         private float _hullRestVolume;
+
+        private Bounds _colliderBounds;
         
         #endregion
 
@@ -124,13 +112,12 @@ namespace XRender.Scripting
         private float _initialHeight;
         private Vector3 _initialScale;
         private Vector3 _initialEuler;
+        private Vector3 _initialCenter;
         
         public bool debugModel = true;
         private ImpactType _hitType = ImpactType.None;
         private ImpactType applyHitType = ImpactType.Front;
         #endregion
-
-        private Rigidbody _rb;
         
         private readonly int[] _topSurface = { 0, 1, 2, 3 };
         private readonly int[] _bottomSurface = { 4, 5, 6, 7 };
@@ -139,69 +126,15 @@ namespace XRender.Scripting
         private readonly int[] _frontSurface = { 0, 4, 3, 7 };
         private readonly int[] _backSurface = { 1, 5, 6, 2 };
         
-        public float PressureCoef
-        {
-            get => _pressureCoef;
-            set => _pressureCoef = value;
-        }
-
-        public float SpringStiffness
-        {
-            get => _springStiffness;
-            set => _springStiffness = value;
-        }
-
-        public float SpringDamping
-        {
-            get => _springDamping;
-            set => _springDamping = value;
-        }
-
-        public float BounceCoefficient
-        {
-            get => _bounceCoefficient;
-            set => _bounceCoefficient = value;
-        }
-
-        public float SlideCoefficient
-        {
-            get => _slideCoefficient;
-            set => _slideCoefficient = value;
-        }
-
-        public float CompressThreshold
-        {
-            get => _compressThreshold;
-            set => _compressThreshold = value;
-        }
-
-        public float CompressionCoef
-        {
-            get => _compressionCoef;
-            set => _compressionCoef = value;
-        }
-
-        public float CompressSpeed
-        {
-            get => _compressSpeed;
-            set => _compressSpeed = value;
-        }
-
-        public float CompressKeepingTime
-        {
-            get => _compressKeepingTime;
-            set => _compressKeepingTime = value;
-        }
-
-        public float PostCompressWaitingTime
-        {
-            get => _postCompressWaitingTime;
-            set => _postCompressWaitingTime = value;
-        }
+        //Semi-Rigid Param
+        private Rigidbody _rb;
+        private XDynamicVirtualBox xvb;
+        public Vector3 dynamicCenterOffset = new Vector3();
+        public Vector3 dynamicBoundingScale = new Vector3();
         void Awake()
         {
             InitComponents();
-
+            
             InitPositions();
 
             InitIndexes();
@@ -213,38 +146,55 @@ namespace XRender.Scripting
         //PT
         void FixedUpdate()
         {
-            if (dynamic)
-            {
-                for (int i = 0; i < _positions.Length; i++)
-                {
-                    _accelerations[i] = transform.rotation * (_gravity);
-                }
-
-                if (needCompressing && !_beingCompressed)
-                {
-                    StartCoroutine(ChangeCoefOverTime());
-                }
-                
-                ApplyVerticalCompressionCoef();
-                
-                AccumulateSpringForce();
-                
-                AccumulatePressureForce();
-                
-                AdvectParticles(Time.fixedDeltaTime);
-                
-                ConstraintSurface();
-                
-                //always lock the local bottom face
-                if (_surfaces[5].IsParticleInVirtualSurface(_positions[4]))
-                {
-                    // lock the bottom
-                    HandleContact(ImpactType.Bottom, _surfaces[5], true);
-                }
-                
-            }
+            // if (dynamic)
+            // {
+            //     for (int i = 0; i < _positions.Length; i++)
+            //     {
+            //         _accelerations[i] = new Vector3(0,-9,0);
+            //     }
+            //     
+            //     ApplyVerticalCompressionCoef();
+            //     
+            //     AccumulateSpringForce();
+            //     
+            //     AccumulatePressureForce();
+            //     
+            //     AdvectParticles(Time.fixedDeltaTime);
+            // }
+            xvb._springStiffness = _springStiffness;
+            xvb._pressureCoef = _pressureCoef;
             
         }
+
+        private IEnumerator RunLateFixedUpdate()
+        {
+            while (true)
+            {
+                yield return new WaitForFixedUpdate();
+                if(Application.isPlaying)
+                    LateFixedUpdate();
+            }
+        }
+
+        private void OnEnable()
+        {
+            StartCoroutine(RunLateFixedUpdate());
+        }
+
+        private void OnDisable()
+        {
+            StopCoroutine(RunLateFixedUpdate());
+        }
+
+        private void LateFixedUpdate()
+        {
+            xvb.Step(ref dynamicCenterOffset, ref dynamicBoundingScale);
+            
+            transform.position += transform.rotation * dynamicCenterOffset;
+            transform.localScale = new Vector3(_initialScale.x * dynamicBoundingScale.x,
+                _initialScale.y * dynamicBoundingScale.y, _initialScale.z * dynamicBoundingScale.z);
+        }
+
         //GT
         private void Update()
         {
@@ -253,56 +203,60 @@ namespace XRender.Scripting
                 SynchronizePhysicsState();
             }
         }
+
+        private void AddToSolver()
+        {
+            
+        }
         
         //----initialize----//
-         private void InitComponents()
-         {
+        private void InitComponents()
+        {  
              _initialEuler = transform.rotation.eulerAngles;
-            transform.rotation = Quaternion.Euler(0,0,0);
+             transform.rotation = Quaternion.Euler(0,0,0);
             
-            _triggerCollider = GetComponent<BoxCollider>();
-            _childSkinnedMeshRenderer = GetComponentInChildren<SkinnedMeshRenderer>();
-            _meshFilter = GetComponentInChildren<MeshFilter>();
-            _rb = GetComponent<Rigidbody>();
+             _triggerCollider = GetComponent<BoxCollider>();
+             _childSkinnedMeshRenderer = GetComponentInChildren<SkinnedMeshRenderer>();
+             _meshFilter = GetComponentInChildren<MeshFilter>();
+             _rb = GetComponent<Rigidbody>();
 
-            if (_childSkinnedMeshRenderer != null)
-            {
-                _childMesh = _childSkinnedMeshRenderer.sharedMesh;
-                _childMeshBounds = _childMesh.bounds;
-            }
-            else
-            {
-                _childMesh = _meshFilter.mesh;
-                _childMeshBounds = _childMesh.bounds;
-            }
+             if (_childSkinnedMeshRenderer != null)
+             {
+                 _childMesh = _childSkinnedMeshRenderer.sharedMesh;
+                 _childMeshBounds = _childMesh.bounds;
+             }
+             else
+             {
+                 _childMesh = _meshFilter.mesh;
+                 _childMeshBounds = _childMesh.bounds;
+             }
 
-            //get local child bounds center
-            Vector3 localBoundsCenter = _childMeshBounds.center;
-            //translate to world location
-            Vector3 worldBoundsCenter = childTransform.TransformPoint(localBoundsCenter);
-            //get loacl father bounds center
-            _triggerCollider.center = transform.InverseTransformPoint(worldBoundsCenter);
+             //get local child bounds center
+             Vector3 localBoundsCenter = _childMeshBounds.center;
+             //translate to world location
+             Vector3 worldBoundsCenter = childTransform.TransformPoint(localBoundsCenter);
+             //get loacl father bounds center
+             _triggerCollider.center = transform.InverseTransformPoint(worldBoundsCenter);
 
-            var localScale = childTransform.localScale;
-            Vector3 scaledBoundsSize = new Vector3(
-                _childMeshBounds.size.x * localScale.x,
-                _childMeshBounds.size.y * localScale.y,
-                _childMeshBounds.size.z * localScale.z
-            );
-            _triggerCollider.size = scaledBoundsSize;
+             var localScale = childTransform.localScale;
+             Vector3 scaledBoundsSize = new Vector3(
+                 _childMeshBounds.size.x * localScale.x,
+                 _childMeshBounds.size.y * localScale.y,
+                 _childMeshBounds.size.z * localScale.z
+             );
+             _triggerCollider.size = scaledBoundsSize;
 
-            _positions = new Vector3[8];
-            _velocities = new Vector3[8];
-            _accelerations = new Vector3[8];
-            _restOffset = new Vector3[8];
-            _currentShapeBound = new Vector3[6];
-            _initialOffset = (transform.position - transform.TransformPoint(_triggerCollider.center));
-            _surfaces = new Surface[6];
-            _localPositions = new Vector3[8];
-            _initialScale = new Vector3();
+             _positions = new Vector3[8];
+             _velocities = new Vector3[8];
+             _accelerations = new Vector3[8];
+             _restOffset = new Vector3[8];
+             _currentShapeBound = new Vector3[6];
+             _initialOffset = (transform.position - transform.TransformPoint(_triggerCollider.center));
+             _surfaces = new Surface[6];
+             _localPositions = new Vector3[8];
+             _initialScale = new Vector3();
 
-            _initialScale = transform.localScale;
-            
+             _initialScale = transform.localScale; 
         }
 
         private void InitPositions()
@@ -321,10 +275,11 @@ namespace XRender.Scripting
             for (int i = 0; i < 8; i++)
             {
                 _restOffset[i] = corners[i] - _triggerCollider.center;
-                corners[i] =  transform.TransformPoint(corners[i]);
+                //corners[i] =  transform.TransformPoint(corners[i]);
             }
             
             _positions = corners;
+            xvb = new XDynamicVirtualBox(_positions, _triggerCollider.center);
             _mappingCoef = new Vector3(
                 (_positions[0] - _positions[3]).magnitude ,
                 (_positions[0] - _positions[4]).magnitude ,
@@ -416,6 +371,8 @@ namespace XRender.Scripting
             _initialHeight = _positions[0].y - _positions[4].y;
             _debugContactPos = new Vector3(0, 0, 0);
             transform.rotation = Quaternion.Euler(_initialEuler);
+            
+            
         }
         
         //----physics solver----//
@@ -576,8 +533,8 @@ namespace XRender.Scripting
                 _initialOffset.y * localScale.y / _initialScale.y, _initialOffset.z * localScale.z / _initialScale.z);
             Vector3 rotatedOffset = transform1.rotation * initialOffset;
             
-            transform1.position = boundsCenter + new Vector3(rotatedOffset.x,
-                rotatedOffset.y, rotatedOffset.z);
+            // transform1.position = boundsCenter + new Vector3(rotatedOffset.x,
+            //     rotatedOffset.y, rotatedOffset.z);
         }
 
         #endregion
@@ -793,7 +750,6 @@ namespace XRender.Scripting
             float coef = 0.0f;
             while (t < 1)
             {
-                coef = lerpType == LerpType.Curve ? curve.Evaluate(t) : t;
                 _compressionCoef = Mathf.LerpUnclamped(1.0f, _compressThreshold, coef);
                 t += Time.fixedDeltaTime * _compressSpeed;
                 yield return null;
@@ -829,22 +785,7 @@ namespace XRender.Scripting
 
         
         //----collision detection----//
-        private void OnCollisionEnter(Collision other)
-        {
-            // ContactPoint contactPoint = other.contacts[0];
-            // _debugContactPos = contactPoint.point;
-            // ImpactType impactType = GetImpactSurface(contactPoint.point);
-            // _hitType = impactType;
-            // applyHitType = impactType;
-            // frontHitTest = true;
-            
-            // if (GetComponent<Rigidbody>().velocity.y < 0)
-            // {
-            //     _rb.useGravity = false;
-            //     dynamic = true;
-            //     needCompressing = true;
-            // }
-        }
+        
 
         private ImpactType GetImpactSurface(Vector3 contactPos)
         {
@@ -880,29 +821,124 @@ namespace XRender.Scripting
                     return ImpactType.Right;
             }
         }
+        private void OnTriggerEnter(Collider other)
+        {
+            
+        }
+
+        private void OnCollisionEnter(Collision collision)
+        {
+            Debug.Log("Collision Detected");
+            var contactPoints = collision.contacts;
+            for (int i = 0; i < contactPoints.Length; i++)
+            {
+                Debug.Log(contactPoints[i].point);
+            }
+            if(Mathf.Abs(_rb.velocity.magnitude) > 5)
+                xvb.RegistImpactEvent(new XDynamicBoundingImpact(_bottomSurface, 100,
+                new Vector3(0, 1, 0)));
+            
+        }
+
+        // private void OnCollisionStay(Collision collision)
+        // {
+        //     Vector3 depenetrationDir;
+        //     float depenetrationDist;
+        //     //Debug.Log(transform.rotation);
+        //     var other = collision.collider;
+        //     if (
+        //         Physics.ComputePenetration(_triggerCollider, transform.position, transform.rotation,
+        //                                    other, other.transform.position, other.transform.rotation,
+        //                                    out depenetrationDir, out depenetrationDist))
+        //     {
+        //         _colliderBounds = other.bounds;
+        //         //Debug.LogFormat("Collision normal {0}", depenetrationDir);
+        //         for (int i = 0; i < _positions.Length; ++i)
+        //         {
+        //             Vector3 p = _positions[i];
+        //             if (other.bounds.Contains(p))
+        //             {
+        //                 Debug.Log(i);
+        //                 // clamp interpenetrating point mass to surface of other collider
+        //                 _positions[i] = 
+        //                     other.ClosestPoint(p + depenetrationDir * (depenetrationDist + 1.0f));
+        //     
+        //                 // reflect component of velocity along other collider normal
+        //                 // while maintaining the remainder of velocity, but reduce by
+        //                 // energy loss coefficient
+        //                 // (approximate average contact normals as depenetration direction)
+        //                 float speedAlongNormalSigned = Vector3.Dot(_velocities[i], depenetrationDir);
+        //                 float speedAlongNormalSign = Mathf.Sign(speedAlongNormalSigned);
+        //                 Vector3 velocityAlongNormal = speedAlongNormalSigned * depenetrationDir;
+        //                 Vector3 slideVelocity = _velocities[i] - velocityAlongNormal;
+        //                 velocityAlongNormal *= speedAlongNormalSign; // reflect if opposing
+        //     
+        //                 // reduce velocityAlongNormal by bounce coefficient if reflecting
+        //                 float bounceCoefficient = (speedAlongNormalSign >= 0.0f ? 1.0f : _bounceCoefficient);
+        //                 _velocities[i] = 
+        //                     bounceCoefficient * velocityAlongNormal + 
+        //                     slideVelocity * _slideCoefficient;                        
+        //             }
+        //         }
+        //     }
+        // 
+
+        private void OnCollisionStay(Collision other)
+        {
+
+        }
+
+        private void OnCollisionExit(Collision other)
+        {
+            Debug.Log("Exit collision");
+        }
         private void OnTriggerStay(Collider other)
         {
             // overlapping with another collider, so make sure the point masses don't interpenetrate,
             // and resolve their velocities for the collision
             Vector3 depenetrationDir;
             float depenetrationDist;
-            List<int> strainedParticles = new List<int>();
+            Debug.Log(transform.rotation);
+            
             if (
                 Physics.ComputePenetration(_triggerCollider, transform.position, transform.rotation,
-                    other, other.transform.position, other.transform.rotation,
-                    out depenetrationDir, out depenetrationDist)) 
+                                           other, other.transform.position, other.transform.rotation,
+                                           out depenetrationDir, out depenetrationDist))
             {
-                for (int i = 0; i < _positions.Length; i++)
+                _colliderBounds = other.bounds;
+                //Debug.LogFormat("Collision normal {0}", depenetrationDir);
+                for (int i = 0; i < _positions.Length; ++i)
                 {
                     Vector3 p = _positions[i];
                     if (other.bounds.Contains(p))
                     {
-
-                        strainedParticles.Add(i);
+                        Debug.Log(i);
+                        // clamp interpenetrating point mass to surface of other collider
+                        _positions[i] = 
+                            other.ClosestPoint(p + depenetrationDir * (depenetrationDist + 1.0f));
+            
+                        // reflect component of velocity along other collider normal
+                        // while maintaining the remainder of velocity, but reduce by
+                        // energy loss coefficient
+                        // (approximate average contact normals as depenetration direction)
+                        float speedAlongNormalSigned = Vector3.Dot(_velocities[i], depenetrationDir);
+                        float speedAlongNormalSign = Mathf.Sign(speedAlongNormalSigned);
+                        Vector3 velocityAlongNormal = speedAlongNormalSigned * depenetrationDir;
+                        Vector3 slideVelocity = _velocities[i] - velocityAlongNormal;
+                        velocityAlongNormal *= speedAlongNormalSign; // reflect if opposing
+            
+                        // reduce velocityAlongNormal by bounce coefficient if reflecting
+                        float bounceCoefficient = (speedAlongNormalSign >= 0.0f ? 1.0f : _bounceCoefficient);
+                        _velocities[i] = 
+                            bounceCoefficient * velocityAlongNormal + 
+                            slideVelocity * _slideCoefficient;                        
                     }
                 }
-                
             }
+        }
+
+        private void OnTriggerExit(Collider other)
+        {
         }
         
         
@@ -971,7 +1007,11 @@ namespace XRender.Scripting
                 Gizmos.DrawLine(d, a);
                 
             }
-
+            
+            for (int i = 0; i < 8; i++)
+            {
+                
+            }
             // draw the springs that cross inside the hull and hull faces
             Gizmos.color = Color.yellow;
             for (int i = 0; i < _diagonalSpringPointMassIndexes.GetLength(0); ++i)
